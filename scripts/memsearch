@@ -1,0 +1,256 @@
+#!/usr/bin/env node
+
+/**
+ * memsearch - Search through memory files with grep-like functionality
+ * 
+ * Usage: memsearch [options] <pattern>
+ * 
+ * Searches through MEMORY.md and memory/*.md files for the given pattern.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const process = require('process');
+
+// ANSI color codes
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  gray: '\x1b[90m'
+};
+
+function showHelp() {
+  console.log(`${colors.bright}memsearch${colors.reset} - Search through memory files
+
+${colors.bright}Usage:${colors.reset}
+  memsearch [options] <pattern>
+
+${colors.bright}Options:${colors.reset}
+  -i, --ignore-case    Case-insensitive search
+  -n, --line-numbers   Show line numbers (default: true)
+  -C, --context <num>  Show <num> lines of context around matches (default: 1)
+  --no-color          Disable color output
+  -h, --help          Show this help message
+
+${colors.bright}Examples:${colors.reset}
+  memsearch "todo"              # Search for "todo" in memory files
+  memsearch -i "project"        # Case-insensitive search for "project"
+  memsearch -C 3 "decision"     # Show 3 lines of context around "decision"
+
+${colors.bright}Files searched:${colors.reset}
+  - MEMORY.md (if exists)
+  - memory/*.md (if directory exists)
+`);
+}
+
+function parseArgs(args) {
+  const options = {
+    pattern: null,
+    ignoreCase: false,
+    lineNumbers: true,
+    context: 1,
+    color: true
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    
+    if (arg === '-h' || arg === '--help') {
+      showHelp();
+      process.exit(0);
+    } else if (arg === '-i' || arg === '--ignore-case') {
+      options.ignoreCase = true;
+    } else if (arg === '-n' || arg === '--line-numbers') {
+      options.lineNumbers = true;
+    } else if (arg === '-C' || arg === '--context') {
+      if (i + 1 >= args.length) {
+        console.error('Error: --context requires a number');
+        process.exit(1);
+      }
+      options.context = parseInt(args[++i], 10);
+      if (isNaN(options.context) || options.context < 0) {
+        console.error('Error: context must be a non-negative number');
+        process.exit(1);
+      }
+    } else if (arg === '--no-color') {
+      options.color = false;
+    } else if (!arg.startsWith('-')) {
+      if (options.pattern === null) {
+        options.pattern = arg;
+      } else {
+        console.error('Error: multiple patterns not supported');
+        process.exit(1);
+      }
+    } else {
+      console.error(`Error: unknown option ${arg}`);
+      process.exit(1);
+    }
+  }
+
+  if (options.pattern === null) {
+    console.error('Error: pattern required');
+    showHelp();
+    process.exit(1);
+  }
+
+  return options;
+}
+
+function getMemoryFiles() {
+  const files = [];
+  
+  // Check for MEMORY.md
+  if (fs.existsSync('MEMORY.md')) {
+    files.push('MEMORY.md');
+  }
+  
+  // Check for memory directory
+  if (fs.existsSync('memory') && fs.statSync('memory').isDirectory()) {
+    const memoryFiles = fs.readdirSync('memory')
+      .filter(f => f.endsWith('.md'))
+      .map(f => path.join('memory', f))
+      .sort();
+    files.push(...memoryFiles);
+  }
+  
+  return files;
+}
+
+function searchFile(filePath, pattern, options) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split('\n');
+    const matches = [];
+    
+    const regex = new RegExp(pattern, options.ignoreCase ? 'gi' : 'g');
+    
+    for (let i = 0; i < lines.length; i++) {
+      if (regex.test(lines[i])) {
+        // Calculate context lines
+        const start = Math.max(0, i - options.context);
+        const end = Math.min(lines.length - 1, i + options.context);
+        
+        const contextLines = [];
+        for (let j = start; j <= end; j++) {
+          contextLines.push({
+            lineNum: j + 1,
+            content: lines[j],
+            isMatch: j === i
+          });
+        }
+        
+        matches.push({
+          lineNum: i + 1,
+          contextLines
+        });
+      }
+    }
+    
+    return matches;
+  } catch (error) {
+    console.error(`Error reading ${filePath}: ${error.message}`);
+    return [];
+  }
+}
+
+function highlightMatch(text, pattern, options) {
+  if (!options.color) return text;
+  
+  const regex = new RegExp(`(${pattern})`, options.ignoreCase ? 'gi' : 'g');
+  return text.replace(regex, `${colors.red}$1${colors.reset}`);
+}
+
+function formatOutput(filePath, matches, pattern, options) {
+  if (matches.length === 0) return;
+  
+  // File header
+  const fileColor = options.color ? colors.magenta : '';
+  const resetColor = options.color ? colors.reset : '';
+  console.log(`${fileColor}${filePath}${resetColor}`);
+  
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    
+    // Add separator between matches if showing context
+    if (i > 0 && options.context > 0) {
+      const separator = options.color ? colors.gray + '--' + colors.reset : '--';
+      console.log(separator);
+    }
+    
+    for (const line of match.contextLines) {
+      let output = '';
+      
+      // Line number
+      if (options.lineNumbers) {
+        const lineNumColor = line.isMatch ? 
+          (options.color ? colors.green : '') : 
+          (options.color ? colors.gray : '');
+        const resetColor = options.color ? colors.reset : '';
+        output += `${lineNumColor}${line.lineNum.toString().padStart(4)}${resetColor}: `;
+      }
+      
+      // Line content with highlighting
+      const content = line.isMatch ? 
+        highlightMatch(line.content, pattern, options) : 
+        line.content;
+      
+      output += content;
+      console.log(output);
+    }
+  }
+  
+  console.log(); // Empty line after file
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  
+  if (args.length === 0) {
+    showHelp();
+    process.exit(0);
+  }
+  
+  const options = parseArgs(args);
+  
+  // Disable colors if output is not a terminal
+  if (!process.stdout.isTTY) {
+    options.color = false;
+  }
+  
+  const files = getMemoryFiles();
+  
+  if (files.length === 0) {
+    console.log('No memory files found (MEMORY.md or memory/*.md)');
+    process.exit(0);
+  }
+  
+  let totalMatches = 0;
+  
+  for (const file of files) {
+    const matches = searchFile(file, options.pattern, options);
+    if (matches.length > 0) {
+      formatOutput(file, matches, options.pattern, options);
+      totalMatches += matches.length;
+    }
+  }
+  
+  if (totalMatches === 0) {
+    console.log(`No matches found for "${options.pattern}"`);
+  } else {
+    const color = options.color ? colors.gray : '';
+    const reset = options.color ? colors.reset : '';
+    console.log(`${color}Found ${totalMatches} match${totalMatches !== 1 ? 'es' : ''} in ${files.length} file${files.length !== 1 ? 's' : ''}${reset}`);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { main, parseArgs, searchFile };
