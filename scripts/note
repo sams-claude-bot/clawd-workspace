@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+function showHelp() {
+  console.log(`Quick Note Capture Tool
+
+Usage:
+  ./scripts/note "your note text"
+  echo "your note text" | ./scripts/note
+  
+Examples:
+  ./scripts/note "Remember to check email"
+  ./scripts/note "Meeting with team at 3pm"
+  echo "Todo: finish project" | ./scripts/note
+
+Options:
+  -h, --help    Show this help message
+
+Notes are automatically appended to memory/YYYY-MM-DD.md with timestamp.`);
+}
+
+function getCurrentDateString() {
+  const now = new Date();
+  return now.getFullYear() + '-' + 
+         String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+         String(now.getDate()).padStart(2, '0');
+}
+
+function getCurrentTimeString() {
+  const now = new Date();
+  return String(now.getHours()).padStart(2, '0') + ':' + 
+         String(now.getMinutes()).padStart(2, '0');
+}
+
+function ensureMemoryDir() {
+  const memoryDir = path.join(process.cwd(), 'memory');
+  if (!fs.existsSync(memoryDir)) {
+    fs.mkdirSync(memoryDir, { recursive: true });
+  }
+  return memoryDir;
+}
+
+function appendToMemoryFile(noteText) {
+  const memoryDir = ensureMemoryDir();
+  const dateString = getCurrentDateString();
+  const timeString = getCurrentTimeString();
+  const memoryFile = path.join(memoryDir, `${dateString}.md`);
+  
+  // Check if file exists, if not create with header
+  if (!fs.existsSync(memoryFile)) {
+    const header = `# Daily Memory - ${dateString}\n\n`;
+    fs.writeFileSync(memoryFile, header);
+  }
+  
+  // Append the note with timestamp
+  const noteEntry = `${timeString} - ${noteText}\n`;
+  fs.appendFileSync(memoryFile, noteEntry);
+  
+  console.log(`✓ Note saved to memory/${dateString}.md`);
+}
+
+async function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    
+    if (process.stdin.isTTY) {
+      resolve('');
+      return;
+    }
+    
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('readable', () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) {
+        data += chunk;
+      }
+    });
+    
+    process.stdin.on('end', () => {
+      resolve(data.trim());
+    });
+  });
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  
+  // Check for help flags
+  if (args.includes('-h') || args.includes('--help')) {
+    showHelp();
+    return;
+  }
+  
+  let noteText = '';
+  
+  // Get text from command line args
+  if (args.length > 0) {
+    noteText = args.join(' ');
+  } else {
+    // Try to read from stdin
+    noteText = await readStdin();
+  }
+  
+  // If still no text, show help
+  if (!noteText.trim()) {
+    showHelp();
+    process.exit(1);
+  }
+  
+  // Append to memory file
+  appendToMemoryFile(noteText.trim());
+}
+
+main().catch(error => {
+  console.error('Error:', error.message);
+  process.exit(1);
+});
