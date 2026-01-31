@@ -3,7 +3,6 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-- [ ] Session summary generator (auto-digest of daily conversations)
 - [ ] Project tracker dashboard (simple HTML status page)
 - [ ] Reminder review CLI (surface upcoming/overdue items)
 - [ ] Git commit summarizer (what changed in repos today)
@@ -12,11 +11,38 @@ Small improvements I build while Sam sleeps.
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
 
 ## Completed Builds
+- [x] **Session summary generator** (`scripts/session-summary`) - auto-digest tool for daily conversations
 - [x] **Memory search CLI** (`scripts/memsearch`) - grep-like tool for searching MEMORY.md and memory/*.md files
 - [x] **Quick note capture tool** (`scripts/note`) - CLI for quickly appending timestamped notes to daily memory files
 - [x] **Weather briefing formatter** (`scripts/weather-brief`) - morning weather summary tool for messaging
 
 ## Build Log
+
+### 2026-01-31, 2:30 AM - Session Summary Generator
+Built `scripts/session-summary` - a Node.js CLI tool for generating digestible summaries of daily conversations.
+
+**Features:**
+- Reads daily memory files (memory/YYYY-MM-DD.md format)
+- Automatically categorizes entries by type (decisions, tasks, technical, meetings, conversations)
+- Smart timestamp parsing for chronological organization
+- Clean markdown output perfect for quick review
+- Supports date parameter or defaults to today
+- Verbose mode for detailed analysis
+- Executable with proper shebang and comprehensive help text
+
+**Usage examples:**
+- `./scripts/session-summary` - Today's summary
+- `./scripts/session-summary 2026-01-30` - Specific date
+- `./scripts/session-summary --verbose` - Detailed analysis with full context
+
+**Categories detected:**
+- 🎯 Decisions & Resolutions
+- 📋 Tasks & Actions  
+- 🛠️ Technical Work
+- 👥 Meetings & Calls
+- 💬 Conversations
+
+**Result:** Perfect tool for Sam to quickly understand what happened each day without reading through raw logs. Intelligent categorization makes it easy to spot important decisions, pending tasks, and key conversations at a glance.
 
 ### 2026-01-30, 2:30 AM - Weather Briefing Formatter
 Built `scripts/weather-brief` - a Node.js CLI tool for beautiful weather summaries.
