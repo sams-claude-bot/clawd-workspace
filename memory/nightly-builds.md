@@ -5,7 +5,6 @@ Small improvements I build while Sam sleeps.
 ## Ideas Backlog
 - [ ] Project tracker dashboard (simple HTML status page)
 - [ ] Reminder review CLI (surface upcoming/overdue items)
-- [ ] Git commit summarizer (what changed in repos today)
 - [ ] Conversation stats tracker (tokens, costs, topics)
 - [ ] Calendar conflict detector (find overlapping events)
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
@@ -15,8 +14,37 @@ Small improvements I build while Sam sleeps.
 - [x] **Memory search CLI** (`scripts/memsearch`) - grep-like tool for searching MEMORY.md and memory/*.md files
 - [x] **Quick note capture tool** (`scripts/note`) - CLI for quickly appending timestamped notes to daily memory files
 - [x] **Weather briefing formatter** (`scripts/weather-brief`) - morning weather summary tool for messaging
+- [x] **Git commit summarizer** (`scripts/git-summary`) - daily development activity tracker
 
 ## Build Log
+
+### 2026-02-01, 2:30 AM - Git Commit Summarizer
+Built `scripts/git-summary` - a Node.js CLI tool for tracking daily development activity.
+
+**Features:**
+- Scans git repositories for commits made on a specific date (defaults to today)
+- Groups commits by repository and author for organized viewing
+- Beautiful color-coded terminal output with timestamps
+- Supports multiple repository scanning with `--repos` flag
+- Flexible date selection with `--date` parameter
+- Smart commit message truncation (80 chars) for clean display
+- Handles edge cases gracefully (no git, no commits, missing directories)
+- Repository name detection from git remotes or directory names
+- Summary statistics showing total commits across repositories
+
+**Usage examples:**
+- `./scripts/git-summary` - Today's commits in current repo
+- `./scripts/git-summary 2026-01-31` - Specific date
+- `./scripts/git-summary --repos ~/project1,~/project2` - Multiple repos
+- `./scripts/git-summary --date 2026-01-30 --repos ~/code` - Custom date and location
+
+**Output format:**
+- 📁 Repository names with commit counts
+- 👤 Author names with individual commit counts  
+- ⏰ Timestamps (HH:MM format) with commit messages
+- 📊 Summary statistics at the end
+
+**Result:** Perfect tool for Sam to quickly see what development work happened on any given day across all his repositories. Great for daily standups, progress tracking, or just remembering what was accomplished. Tested successfully - found yesterday's nightly build commit!
 
 ### 2026-01-31, 2:30 AM - Session Summary Generator
 Built `scripts/session-summary` - a Node.js CLI tool for generating digestible summaries of daily conversations.
