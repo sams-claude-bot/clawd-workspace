@@ -1,0 +1,213 @@
+#!/usr/bin/env node
+
+/**
+ * Git Commit Summarizer
+ * 
+ * Scans git repositories for commits made on a specific date (default: today)
+ * and provides a clean, organized summary of what changed.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// ANSI colors for terminal output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m'
+};
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+let targetDate = new Date().toISOString().split('T')[0]; // Today by default
+let reposPaths = ['.'];
+let showHelp = false;
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--help' || args[i] === '-h') {
+    showHelp = true;
+    break;
+  } else if (args[i] === '--date' || args[i] === '-d') {
+    targetDate = args[i + 1];
+    i++; // Skip next arg since we consumed it
+  } else if (args[i] === '--repos' || args[i] === '-r') {
+    reposPaths = args[i + 1].split(',').map(p => p.trim());
+    i++; // Skip next arg
+  } else if (!args[i].startsWith('-')) {
+    // Assume it's a date if it's not a flag
+    targetDate = args[i];
+  }
+}
+
+if (showHelp) {
+  console.log(`${colors.bright}Git Commit Summarizer${colors.reset}
+
+Usage: git-summary [date] [options]
+
+Options:
+  --date, -d <date>     Target date (YYYY-MM-DD format, default: today)
+  --repos, -r <paths>   Comma-separated list of repo paths (default: current directory)
+  --help, -h           Show this help message
+
+Examples:
+  git-summary                           # Today's commits in current repo
+  git-summary 2026-01-31               # Specific date
+  git-summary --repos ~/project1,~/project2  # Multiple repositories
+  git-summary --date 2026-01-31 --repos ~/code/myapp  # Specific date and repo
+`);
+  process.exit(0);
+}
+
+// Validate date format
+if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+  console.error(`${colors.red}Error: Invalid date format. Use YYYY-MM-DD.${colors.reset}`);
+  process.exit(1);
+}
+
+function isGitRepo(dir) {
+  try {
+    execSync('git rev-parse --git-dir', { 
+      cwd: dir, 
+      stdio: 'pipe' 
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getRepoName(dir) {
+  try {
+    const remoteName = execSync('git remote get-url origin 2>/dev/null || echo ""', { 
+      cwd: dir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    if (remoteName) {
+      const match = remoteName.match(/([^\/]+)\.git$/);
+      if (match) return match[1];
+      
+      const pathMatch = remoteName.match(/([^\/]+)$/);
+      if (pathMatch) return pathMatch[1];
+    }
+    
+    return path.basename(dir);
+  } catch {
+    return path.basename(dir);
+  }
+}
+
+function getCommits(dir, date) {
+  try {
+    const sinceDate = date + ' 00:00:00';
+    const untilDate = date + ' 23:59:59';
+    
+    const commits = execSync(
+      `git log --since="${sinceDate}" --until="${untilDate}" --pretty=format:"%H|%an|%ae|%ad|%s" --date=format:"%H:%M"`,
+      { 
+        cwd: dir, 
+        encoding: 'utf8',
+        stdio: 'pipe'
+      }
+    ).trim();
+    
+    if (!commits) return [];
+    
+    return commits.split('\n').map(line => {
+      const [hash, author, email, time, message] = line.split('|');
+      return { hash, author, email, time, message };
+    });
+  } catch (error) {
+    return [];
+  }
+}
+
+function formatTime(timeStr) {
+  return `${colors.dim}${timeStr}${colors.reset}`;
+}
+
+function formatAuthor(author) {
+  return `${colors.cyan}${author}${colors.reset}`;
+}
+
+function formatCommitMessage(message) {
+  // Truncate long messages
+  const maxLength = 80;
+  if (message.length > maxLength) {
+    return message.substring(0, maxLength - 3) + '...';
+  }
+  return message;
+}
+
+function formatRepoName(name) {
+  return `${colors.bright}${colors.blue}📁 ${name}${colors.reset}`;
+}
+
+// Main execution
+console.log(`${colors.bright}Git Commit Summary for ${colors.yellow}${targetDate}${colors.reset}\n`);
+
+let totalCommits = 0;
+let hasAnyCommits = false;
+
+for (const repoPath of reposPaths) {
+  const resolvedPath = path.resolve(repoPath);
+  
+  // Check if directory exists
+  if (!fs.existsSync(resolvedPath)) {
+    console.log(`${colors.red}❌ Directory not found: ${resolvedPath}${colors.reset}`);
+    continue;
+  }
+  
+  // Check if it's a git repository
+  if (!isGitRepo(resolvedPath)) {
+    console.log(`${colors.yellow}⚠️  Not a git repository: ${resolvedPath}${colors.reset}`);
+    continue;
+  }
+  
+  const repoName = getRepoName(resolvedPath);
+  const commits = getCommits(resolvedPath, targetDate);
+  
+  if (commits.length === 0) {
+    console.log(`${formatRepoName(repoName)} ${colors.dim}(no commits)${colors.reset}`);
+    continue;
+  }
+  
+  hasAnyCommits = true;
+  totalCommits += commits.length;
+  
+  console.log(`${formatRepoName(repoName)} ${colors.green}(${commits.length} commit${commits.length !== 1 ? 's' : ''})${colors.reset}`);
+  
+  // Group by author
+  const byAuthor = {};
+  commits.forEach(commit => {
+    if (!byAuthor[commit.author]) {
+      byAuthor[commit.author] = [];
+    }
+    byAuthor[commit.author].push(commit);
+  });
+  
+  // Display commits grouped by author
+  Object.entries(byAuthor).forEach(([author, authorCommits]) => {
+    console.log(`  ${formatAuthor(author)} ${colors.dim}(${authorCommits.length} commit${authorCommits.length !== 1 ? 's' : ''})${colors.reset}`);
+    
+    authorCommits.forEach(commit => {
+      console.log(`    ${formatTime(commit.time)} ${formatCommitMessage(commit.message)}`);
+    });
+    console.log();
+  });
+}
+
+// Summary
+if (hasAnyCommits) {
+  console.log(`${colors.bright}${colors.green}📊 Total: ${totalCommits} commit${totalCommits !== 1 ? 's' : ''} across ${reposPaths.length} repositor${reposPaths.length !== 1 ? 'ies' : 'y'}${colors.reset}`);
+} else {
+  console.log(`${colors.dim}No commits found for ${targetDate} 😴${colors.reset}`);
+}
