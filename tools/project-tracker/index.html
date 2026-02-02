@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Tracker Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">
+                <span class="icon">📁</span>
+                Project Dashboard
+            </h1>
+            <div class="stats" id="stats">
+                <div class="stat">
+                    <span class="stat-value" id="total-repos">-</span>
+                    <span class="stat-label">Repositories</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="clean-repos">-</span>
+                    <span class="stat-label">Clean</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="dirty-repos">-</span>
+                    <span class="stat-label">Dirty</span>
+                </div>
+            </div>
+            <div class="last-updated">
+                Last updated: <span id="last-updated">-</span>
+            </div>
+        </header>
+
+        <div class="filters">
+            <input type="text" id="search" placeholder="Search repositories..." class="search-input">
+            <select id="status-filter" class="filter-select">
+                <option value="all">All Status</option>
+                <option value="clean">Clean Only</option>
+                <option value="dirty">Dirty Only</option>
+            </select>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading projects...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;">
+            <p>Failed to load project data. Make sure the data generator is accessible.</p>
+        </div>
+
+        <div id="repositories" class="repositories">
+            <!-- Repository cards will be inserted here -->
+        </div>
+    </div>
+
+    <script>
+        class ProjectDashboard {
+            constructor() {
+                this.data = null;
+                this.filteredRepos = [];
+                this.init();
+            }
+
+            async init() {
+                await this.loadData();
+                this.setupEventListeners();
+                this.startAutoRefresh();
+            }
+
+            async loadData() {
+                try {
+                    const response = await fetch('./data.json');
+                    this.data = await response.json();
+                    this.filteredRepos = this.data.repositories || [];
+                    this.updateUI();
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'none';
+                } catch (error) {
+                    console.error('Failed to load data:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                }
+            }
+
+            updateUI() {
+                this.updateStats();
+                this.updateLastUpdated();
+                this.renderRepositories();
+            }
+
+            updateStats() {
+                const repos = this.data.repositories || [];
+                const cleanRepos = repos.filter(r => r.status === 'clean').length;
+                const dirtyRepos = repos.filter(r => r.status === 'dirty').length;
+
+                document.getElementById('total-repos').textContent = repos.length;
+                document.getElementById('clean-repos').textContent = cleanRepos;
+                document.getElementById('dirty-repos').textContent = dirtyRepos;
+            }
+
+            updateLastUpdated() {
+                if (this.data?.generatedAt) {
+                    const date = new Date(this.data.generatedAt);
+                    const timeStr = date.toLocaleTimeString('en-US', { 
+                        hour12: true, 
+                        hour: 'numeric', 
+                        minute: '2-digit' 
+                    });
+                    document.getElementById('last-updated').textContent = timeStr;
+                }
+            }
+
+            renderRepositories() {
+                const container = document.getElementById('repositories');
+                
+                if (this.filteredRepos.length === 0) {
+                    container.innerHTML = '<div class="no-results">No repositories found.</div>';
+                    return;
+                }
+
+                container.innerHTML = this.filteredRepos.map(repo => this.createRepoCard(repo)).join('');
+            }
+
+            createRepoCard(repo) {
+                const statusClass = repo.status === 'clean' ? 'status-clean' : 'status-dirty';
+                const statusIcon = repo.status === 'clean' ? '✅' : '⚠️';
+                const lastCommitDate = new Date(repo.lastCommit.date);
+                const timeAgo = this.getTimeAgo(lastCommitDate);
+                const remoteLink = repo.remoteUrl ? 
+                    `<a href="${repo.remoteUrl}" target="_blank" rel="noopener" class="remote-link" title="View on GitHub">🔗</a>` : '';
+
+                return `
+                    <div class="repo-card">
+                        <div class="repo-header">
+                            <h3 class="repo-name">${repo.name}</h3>
+                            <div class="repo-badges">
+                                <span class="status-badge ${statusClass}" title="Repository status">
+                                    ${statusIcon} ${repo.status}
+                                </span>
+                                ${remoteLink}
+                            </div>
+                        </div>
+                        
+                        <div class="repo-details">
+                            <div class="detail">
+                                <span class="detail-label">Branch:</span>
+                                <span class="branch-name">${repo.branch}</span>
+                            </div>
+                            
+                            <div class="detail">
+                                <span class="detail-label">Last Commit:</span>
+                                <span class="commit-info">
+                                    <code class="commit-hash">${repo.lastCommit.hash}</code>
+                                    <span class="commit-date" title="${lastCommitDate.toLocaleString()}">${timeAgo}</span>
+                                </span>
+                            </div>
+                            
+                            <div class="commit-message" title="${repo.lastCommit.message}">
+                                ${this.truncateMessage(repo.lastCommit.message, 80)}
+                            </div>
+                            
+                            <div class="repo-meta">
+                                <span class="commit-count">${repo.commitCount} commits</span>
+                                <span class="repo-path" title="${repo.path}">${this.truncatePath(repo.path)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            getTimeAgo(date) {
+                const now = new Date();
+                const diff = now - date;
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(diff / 3600000);
+                const days = Math.floor(diff / 86400000);
+
+                if (days > 0) return `${days}d ago`;
+                if (hours > 0) return `${hours}h ago`;
+                if (minutes > 0) return `${minutes}m ago`;
+                return 'just now';
+            }
+
+            truncateMessage(message, maxLength) {
+                if (message.length <= maxLength) return message;
+                return message.substring(0, maxLength - 3) + '...';
+            }
+
+            truncatePath(path) {
+                const parts = path.split('/');
+                if (parts.length > 3) {
+                    return '.../' + parts.slice(-2).join('/');
+                }
+                return path;
+            }
+
+            setupEventListeners() {
+                const searchInput = document.getElementById('search');
+                const statusFilter = document.getElementById('status-filter');
+
+                searchInput.addEventListener('input', () => this.applyFilters());
+                statusFilter.addEventListener('change', () => this.applyFilters());
+            }
+
+            applyFilters() {
+                const searchTerm = document.getElementById('search').value.toLowerCase();
+                const statusFilter = document.getElementById('status-filter').value;
+
+                this.filteredRepos = (this.data?.repositories || []).filter(repo => {
+                    const matchesSearch = repo.name.toLowerCase().includes(searchTerm) ||
+                                        repo.lastCommit.message.toLowerCase().includes(searchTerm) ||
+                                        repo.branch.toLowerCase().includes(searchTerm);
+                    
+                    const matchesStatus = statusFilter === 'all' || repo.status === statusFilter;
+
+                    return matchesSearch && matchesStatus;
+                });
+
+                this.renderRepositories();
+            }
+
+            startAutoRefresh() {
+                // Refresh every 30 seconds
+                setInterval(() => {
+                    this.loadData();
+                }, 30000);
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new ProjectDashboard();
+        });
+    </script>
+</body>
+</html>

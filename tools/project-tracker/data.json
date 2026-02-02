@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-02-02T08:33:28.177Z",
+  "totalRepos": 1,
+  "scannedPaths": [
+    "/home/sam/clawd"
+  ],
+  "repositories": [
+    {
+      "name": "clawd",
+      "path": "/home/sam/clawd",
+      "branch": "master",
+      "lastCommit": {
+        "hash": "fd6d0e2",
+        "date": "2026-02-01 02:32:27 -0600",
+        "message": "Update nightly builds log: Git commit summarizer completed"
+      },
+      "status": "dirty",
+      "remoteUrl": "https://github.com/sams-claude-bot/clawd-workspace",
+      "commitCount": 7
+    }
+  ]
+}

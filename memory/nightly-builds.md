@@ -3,13 +3,13 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-- [ ] Project tracker dashboard (simple HTML status page)
 - [ ] Reminder review CLI (surface upcoming/overdue items)
 - [ ] Conversation stats tracker (tokens, costs, topics)
 - [ ] Calendar conflict detector (find overlapping events)
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
 
 ## Completed Builds
+- [x] **Project tracker dashboard** (`tools/project-tracker`) - beautiful HTML dashboard for monitoring git repositories
 - [x] **Session summary generator** (`scripts/session-summary`) - auto-digest tool for daily conversations
 - [x] **Memory search CLI** (`scripts/memsearch`) - grep-like tool for searching MEMORY.md and memory/*.md files
 - [x] **Quick note capture tool** (`scripts/note`) - CLI for quickly appending timestamped notes to daily memory files
@@ -17,6 +17,44 @@ Small improvements I build while Sam sleeps.
 - [x] **Git commit summarizer** (`scripts/git-summary`) - daily development activity tracker
 
 ## Build Log
+
+### 2026-02-02, 2:30 AM - Project Tracker Dashboard
+Built `tools/project-tracker` - a beautiful, real-time dashboard for monitoring git repositories.
+
+**Features:**
+- **Auto-discovery**: Scans specified directories (~/clawd, ~/Projects by default) for git repositories
+- **Comprehensive status**: Shows repo health (clean/dirty), last commit info, branch, remote URLs
+- **Beautiful UI**: Modern design with automatic dark/light mode based on system preference
+- **Real-time updates**: Auto-refreshes every 30 seconds with smooth animations
+- **Search & filtering**: Find repos by name, branch, or commit message; filter by status
+- **Mobile responsive**: Perfect display on desktop, tablet, and mobile devices
+- **GitHub integration**: Direct clickable links to remote repositories when available
+- **Performance optimized**: Fast scanning, lightweight dashboard, zero network dependency after load
+
+**Components created:**
+- `generate-data.js` - Node.js script for scanning git repos and outputting JSON data
+- `index.html` - Main dashboard page with interactive features
+- `style.css` - Beautiful CSS with dark mode support and responsive design
+- `README.md` - Comprehensive documentation with setup instructions
+- Auto-generated `data.json` - Repository data in structured format
+
+**Technical highlights:**
+- Scans git repositories recursively with configurable depth
+- Extracts: repo name, current branch, last commit (hash/date/message), status (clean/dirty), remote URLs, commit counts
+- Smart URL conversion (SSH → HTTPS for GitHub links)
+- Graceful error handling for corrupt/inaccessible repositories
+- CSS Grid layout with automatic responsive breakpoints
+- Live search filtering without page reloads
+- Time-ago calculations for human-readable commit timestamps
+- Truncated display for long commit messages and paths
+
+**Usage examples:**
+- `node generate-data.js` - Scan default directories
+- `node generate-data.js /custom/path` - Scan specific directory
+- `python3 -m http.server 8080` - Serve dashboard locally
+- Set up cron job for automatic data updates
+
+**Result:** A production-ready project tracking solution that gives Sam an instant visual overview of all his repositories, their health, and recent activity. Perfect for morning reviews, identifying stale projects, or checking development status across multiple repos. The dashboard loads instantly and works completely offline after initial setup.
 
 ### 2026-02-01, 2:30 AM - Git Commit Summarizer
 Built `scripts/git-summary` - a Node.js CLI tool for tracking daily development activity.
