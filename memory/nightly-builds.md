@@ -5,7 +5,6 @@ Small improvements I build while Sam sleeps.
 ## Ideas Backlog
 - [ ] Reminder review CLI (surface upcoming/overdue items)
 - [ ] Conversation stats tracker (tokens, costs, topics)
-- [ ] Calendar conflict detector (find overlapping events)
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
 
 ## Completed Builds
@@ -15,8 +14,52 @@ Small improvements I build while Sam sleeps.
 - [x] **Quick note capture tool** (`scripts/note`) - CLI for quickly appending timestamped notes to daily memory files
 - [x] **Weather briefing formatter** (`scripts/weather-brief`) - morning weather summary tool for messaging
 - [x] **Git commit summarizer** (`scripts/git-summary`) - daily development activity tracker
+- [x] **Calendar conflict detector** (`scripts/cal-conflicts`) - CLI tool for detecting overlapping calendar events
 
 ## Build Log
+
+### 2026-02-03, 2:30 AM - Calendar Conflict Detector
+Built `scripts/cal-conflicts` - a Node.js CLI tool for detecting overlapping calendar events.
+
+**Features:**
+- **Smart conflict detection**: Analyzes calendar events and identifies overlapping time slots
+- **Flexible date ranges**: Check next N days (default 7) or start from specific date
+- **Multiple event types**: Handles both timed events and all-day events properly  
+- **Beautiful terminal output**: Color-coded results with emojis and clean formatting
+- **Timezone awareness**: Properly handles America/Chicago timezone for Sam's schedule
+- **MCP integration**: Uses mcporter calendar server to fetch Google Calendar events
+- **Comprehensive help**: Built-in help system with usage examples and options
+- **Robust error handling**: Graceful handling of API errors, network issues, and empty calendars
+- **Smart date formatting**: Human-readable timestamps with contextual labels (Today, Tomorrow)
+- **Zero dependencies**: Pure Node.js with no external packages required
+
+**Command line options:**
+- `-d, --days N` - Check N days ahead (default: 7)
+- `--date YYYY-MM-DD` - Start from specific date instead of today
+- `-h, --help` - Show comprehensive usage information
+
+**Usage examples:**
+- `./scripts/cal-conflicts` - Check next 7 days for conflicts
+- `./scripts/cal-conflicts --days 14` - Check next 2 weeks  
+- `./scripts/cal-conflicts --date 2026-02-10` - Check from specific date
+- `./scripts/cal-conflicts --help` - Show help and options
+
+**Technical highlights:**
+- Integrates with Google Calendar via mcporter MCP server
+- Overlap detection algorithm comparing start/end times across all event pairs
+- Proper ISO 8601 date formatting for API compatibility
+- Color-coded terminal output (green for success, red for conflicts, cyan for info)
+- Error handling with helpful troubleshooting tips
+- Executable with proper shebang and file permissions
+
+**Output format:**
+- 📅 Header with scan summary and date range
+- ✅ Success message when no conflicts found
+- ⚠️ Detailed conflict listing with event names and times
+- 💡 Helpful suggestions for resolving conflicts
+- 📊 Statistics showing total events scanned
+
+**Result:** A production-ready calendar management tool that helps Sam proactively identify scheduling conflicts before they become problems. Perfect for morning reviews, planning busy weeks, or ensuring important meetings don't overlap. Tested successfully with proper error handling and beautiful output formatting.
 
 ### 2026-02-02, 2:30 AM - Project Tracker Dashboard
 Built `tools/project-tracker` - a beautiful, real-time dashboard for monitoring git repositories.
