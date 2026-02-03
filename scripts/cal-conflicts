@@ -1,0 +1,248 @@
+#!/usr/bin/env node
+
+const { exec } = require('child_process');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
+
+// ANSI color codes for beautiful output
+const colors = {
+  reset: '\033[0m',
+  bright: '\033[1m',
+  dim: '\033[2m',
+  red: '\033[31m',
+  green: '\033[32m',
+  yellow: '\033[33m',
+  blue: '\033[34m',
+  magenta: '\033[35m',
+  cyan: '\033[36m'
+};
+
+function colorize(text, color) {
+  return `${colors[color] || ''}${text}${colors.reset}`;
+}
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const config = { days: 7, date: null, help: false };
+  
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    
+    if (arg === '--help' || arg === '-h') {
+      config.help = true;
+    } else if (arg === '--days' || arg === '-d') {
+      const daysValue = parseInt(args[i + 1]);
+      if (!isNaN(daysValue) && daysValue > 0) {
+        config.days = daysValue;
+        i++; // Skip next arg
+      }
+    } else if (arg === '--date') {
+      const dateValue = args[i + 1];
+      if (dateValue && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+        config.date = dateValue;
+        i++; // Skip next arg
+      }
+    }
+  }
+  
+  return config;
+}
+
+function showHelp() {
+  console.log(colorize('\n📅 Calendar Conflict Detector', 'bright'));
+  console.log(colorize('Scan for overlapping events in your calendar\n', 'dim'));
+  
+  console.log(colorize('Usage:', 'bright'));
+  console.log('  cal-conflicts [options]\n');
+  
+  console.log(colorize('Options:', 'bright'));
+  console.log('  -d, --days N     Check N days ahead (default: 7)');
+  console.log('  --date DATE      Start from specific date (YYYY-MM-DD)');
+  console.log('  -h, --help       Show this help\n');
+  
+  console.log(colorize('Examples:', 'bright'));
+  console.log('  cal-conflicts                    # Check next 7 days');
+  console.log('  cal-conflicts --days 14          # Check next 2 weeks');
+  console.log('  cal-conflicts --date 2026-02-10  # Check from specific date');
+}
+
+function formatDateTime(dateString) {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const dayName = dayNames[date.getDay()];
+    const month = monthNames[date.getMonth()];
+    const day = date.getDate();
+    
+    let dateStr = `${dayName} ${month} ${day}`;
+    
+    // Add "Today" or "Tomorrow" context
+    const diffTime = eventDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) dateStr += ' (Today)';
+    else if (diffDays === 1) dateStr += ' (Tomorrow)';
+    
+    // Time formatting
+    const timeStr = date.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit', 
+      hour12: true,
+      timeZone: 'America/Chicago'
+    });
+    
+    return `${dateStr} at ${timeStr}`;
+  } catch (error) {
+    return dateString;
+  }
+}
+
+function eventsOverlap(event1, event2) {
+  // Handle all-day events
+  if (event1.start.date && event2.start.date) {
+    return event1.start.date === event2.start.date;
+  }
+  
+  const start1 = new Date(event1.start.dateTime || event1.start.date);
+  const end1 = new Date(event1.end.dateTime || event1.end.date);
+  const start2 = new Date(event2.start.dateTime || event2.start.date);
+  const end2 = new Date(event2.end.dateTime || event2.end.date);
+  
+  // Check if events overlap
+  return start1 < end2 && start2 < end1;
+}
+
+async function fetchEvents(startDate, endDate) {
+  try {
+    // Format dates as ISO 8601 without milliseconds (as required by mcporter)
+    const timeMin = startDate.toISOString().split('.')[0];
+    const timeMax = endDate.toISOString().split('.')[0];
+    
+    const command = `mcporter call calendar.list-events calendarId=primary timeMin="${timeMin}" timeMax="${timeMax}" timeZone="America/Chicago"`;
+    
+    const { stdout, stderr } = await execAsync(command);
+    
+    if (stderr) {
+      console.error(colorize('⚠️  Error fetching calendar events:', 'yellow'));
+      console.error(stderr);
+      return [];
+    }
+    
+    // Check if stdout contains an MCP error
+    if (stdout.trim().startsWith('MCP error')) {
+      console.error(colorize('⚠️  Calendar API error:', 'yellow'));
+      console.error(stdout.trim());
+      return [];
+    }
+    
+    const response = JSON.parse(stdout);
+    return response.items || [];
+    
+  } catch (error) {
+    console.error(colorize('❌ Failed to fetch calendar events:', 'red'));
+    console.error(error.message);
+    
+    // Helpful troubleshooting
+    console.log(colorize('\n💡 Troubleshooting tips:', 'dim'));
+    console.log('  • Make sure mcporter is installed and configured');
+    console.log('  • Check if calendar server is running: mcporter list');
+    console.log('  • Verify Google Calendar access is set up');
+    
+    return [];
+  }
+}
+
+function findConflicts(events) {
+  const conflicts = [];
+  
+  for (let i = 0; i < events.length; i++) {
+    for (let j = i + 1; j < events.length; j++) {
+      if (eventsOverlap(events[i], events[j])) {
+        conflicts.push({
+          event1: events[i],
+          event2: events[j]
+        });
+      }
+    }
+  }
+  
+  return conflicts;
+}
+
+function displayResults(conflicts, totalEvents, dateRange) {
+  console.log(colorize('\n📅 Calendar Conflict Report', 'bright'));
+  console.log(colorize(`📊 Scanned ${totalEvents} events from ${dateRange}\n`, 'dim'));
+  
+  if (conflicts.length === 0) {
+    console.log(colorize('✅ No conflicts found! Your calendar looks good.', 'green'));
+    return;
+  }
+  
+  console.log(colorize(`⚠️  Found ${conflicts.length} conflict${conflicts.length > 1 ? 's' : ''}:\n`, 'red'));
+  
+  conflicts.forEach((conflict, index) => {
+    const { event1, event2 } = conflict;
+    
+    console.log(colorize(`Conflict ${index + 1}:`, 'bright'));
+    console.log(`  ${colorize('📍', 'red')} ${event1.summary || 'Untitled Event'}`);
+    console.log(`     ${formatDateTime(event1.start.dateTime || event1.start.date)} - ${formatDateTime(event1.end.dateTime || event1.end.date)}`);
+    console.log(`  ${colorize('📍', 'red')} ${event2.summary || 'Untitled Event'}`);
+    console.log(`     ${formatDateTime(event2.start.dateTime || event2.start.date)} - ${formatDateTime(event2.end.dateTime || event2.end.date)}`);
+    console.log();
+  });
+  
+  console.log(colorize('💡 Consider rescheduling one of the conflicting events.', 'cyan'));
+}
+
+async function main() {
+  const config = parseArgs();
+  
+  if (config.help) {
+    showHelp();
+    return;
+  }
+  
+  // Calculate date range
+  const startDate = config.date ? new Date(config.date) : new Date();
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + config.days);
+  
+  const dateRangeStr = `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+  
+  console.log(colorize('🔍 Checking for calendar conflicts...', 'cyan'));
+  
+  const events = await fetchEvents(startDate, endDate);
+  
+  if (events.length === 0) {
+    console.log(colorize('📭 No events found in the specified date range.', 'dim'));
+    return;
+  }
+  
+  const conflicts = findConflicts(events);
+  displayResults(conflicts, events.length, dateRangeStr);
+}
+
+// Handle errors gracefully
+process.on('uncaughtException', (error) => {
+  console.error(colorize('💥 Unexpected error:', 'red'), error.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error(colorize('💥 Promise rejection:', 'red'), reason);
+  process.exit(1);
+});
+
+// Run the main function
+main().catch(error => {
+  console.error(colorize('❌ Error:', 'red'), error.message);
+  process.exit(1);
+});
