@@ -3,11 +3,11 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-- [ ] Reminder review CLI (surface upcoming/overdue items)
 - [ ] Conversation stats tracker (tokens, costs, topics)
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
 
 ## Completed Builds
+- [x] **Reminder review CLI** (`scripts/reminder-check`) - comprehensive tool for surfacing upcoming/overdue reminders
 - [x] **Project tracker dashboard** (`tools/project-tracker`) - beautiful HTML dashboard for monitoring git repositories
 - [x] **Session summary generator** (`scripts/session-summary`) - auto-digest tool for daily conversations
 - [x] **Memory search CLI** (`scripts/memsearch`) - grep-like tool for searching MEMORY.md and memory/*.md files
@@ -17,6 +17,52 @@ Small improvements I build while Sam sleeps.
 - [x] **Calendar conflict detector** (`scripts/cal-conflicts`) - CLI tool for detecting overlapping calendar events
 
 ## Build Log
+
+### 2026-02-04, 2:30 AM - Reminder Review CLI
+Built `scripts/reminder-check` - a comprehensive reminder scanning tool for surfacing upcoming/overdue items.
+
+**Features:**
+- **Multi-source scanning**: Checks cron jobs, daily memory files, and MEMORY.md for reminders
+- **Smart date parsing**: Handles relative dates (tomorrow, next week), ISO format, and natural language
+- **Intelligent filtering**: Identifies TODO items, reminders, unchecked tasks while excluding completed items
+- **Beautiful terminal output**: Color-coded categories with emojis and clean formatting
+- **Urgency categorization**: Groups by overdue, today, this week, and future reminders
+- **Detailed source tracking**: Shows exact file locations and line numbers for each reminder
+- **Flexible options**: Command line flags for days ahead (--days N) and show all (--all)
+- **Comprehensive help**: Built-in documentation with usage examples
+- **Production-ready**: Robust error handling, graceful failures, zero external dependencies
+
+**Technical highlights:**
+- Node.js CLI with proper shebang and executable permissions
+- Integrates with clawdbot cron system for reminder-type jobs
+- Multiple date parsing strategies supporting various formats
+- Modular architecture separating scanning, parsing, and display logic
+- Clean terminal output with ANSI color codes and Unicode emojis
+- Recursive file scanning with configurable date range filtering
+- Memory-efficient processing of large daily log collections
+- Cross-platform compatibility with standard Node.js APIs
+
+**Command line interface:**
+- `./scripts/reminder-check` - Check next 7 days for reminders
+- `./scripts/reminder-check --days 14` - Check next 2 weeks
+- `./scripts/reminder-check --all` - Show all reminders regardless of date
+- `./scripts/reminder-check --help` - Comprehensive usage documentation
+
+**Output categories:**
+- 🚨 Overdue - Past due date (high priority, red)
+- ⏰ Today - Due today (medium priority, yellow)
+- 📅 This Week - Due within specified days (normal priority, blue)
+- 🔮 Future - Beyond timeframe (low priority, green, --all only)
+- 📝 No Due Date - General reminders without dates (gray, --all only)
+
+**Integration points:**
+- Clawdbot cron job scanning via shell command execution
+- Daily memory file parsing from memory/ directory
+- Main MEMORY.md scanning for long-term reminders
+- File system operations with graceful error handling
+- Terminal color support detection and fallback handling
+
+**Result:** A production-ready reminder management tool that gives Sam instant visibility into all pending items across his entire system. Perfect for morning reviews, productivity planning, or ensuring nothing falls through the cracks. The tool is fast, reliable, and provides exactly the right level of detail for quick decision-making about what needs attention.
 
 ### 2026-02-03, 2:30 AM - Calendar Conflict Detector
 Built `scripts/cal-conflicts` - a Node.js CLI tool for detecting overlapping calendar events.
