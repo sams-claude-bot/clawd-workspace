@@ -3,7 +3,6 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-- [ ] Conversation stats tracker (tokens, costs, topics)
 - [ ] Link saver/organizer (URLs mentioned in chats → organized list)
 
 ## Completed Builds
@@ -15,8 +14,68 @@ Small improvements I build while Sam sleeps.
 - [x] **Weather briefing formatter** (`scripts/weather-brief`) - morning weather summary tool for messaging
 - [x] **Git commit summarizer** (`scripts/git-summary`) - daily development activity tracker
 - [x] **Calendar conflict detector** (`scripts/cal-conflicts`) - CLI tool for detecting overlapping calendar events
+- [x] **Conversation stats tracker** (`scripts/conv-stats`) - comprehensive analytics tool for conversation data
 
 ## Build Log
+
+### 2026-02-05, 2:30 AM - Conversation Stats Tracker
+Built `scripts/conv-stats` - a comprehensive conversation analytics tool for tracking usage patterns and insights.
+
+**Features:**
+- **Multi-source analysis**: Scans daily memory files (memory/YYYY-MM-DD.md) for conversation data
+- **Token and cost tracking**: Extracts token usage patterns and cost information from logs
+- **Intelligent topic extraction**: Identifies conversation themes using keyword analysis across technical, project, and general categories
+- **Model usage analytics**: Tracks and visualizes which AI models are being used
+- **Beautiful terminal output**: Color-coded charts, graphs, and statistics with ASCII art visualization
+- **Flexible date ranges**: Support for custom date ranges, last N days, or specific periods
+- **Multiple output formats**: Export data as JSON, CSV, or text files for further analysis
+- **Comprehensive statistics**: Daily/weekly/monthly trends, averages, and breakdowns
+- **Smart pattern recognition**: Detects conversation patterns, session frequency, and activity levels
+
+**Command line interface:**
+- `./scripts/conv-stats` - Analyze last 7 days (default)
+- `./scripts/conv-stats --days 30` - Analyze last 30 days
+- `./scripts/conv-stats --today` - Today's data only
+- `./scripts/conv-stats --from 2026-02-01 --to 2026-02-05` - Custom date range
+- `./scripts/conv-stats --topics` - Focus on topic analysis
+- `./scripts/conv-stats --costs` - Focus on cost analysis  
+- `./scripts/conv-stats --models` - Focus on model usage
+- `./scripts/conv-stats --export json` - Export data as JSON
+- `./scripts/conv-stats --verbose` - Detailed daily breakdown
+- `./scripts/conv-stats --help` - Comprehensive documentation
+
+**Analytics capabilities:**
+- **Token Usage Trends**: Daily, weekly, and monthly token consumption patterns
+- **Cost Analysis**: Spending breakdown and cost per day calculations
+- **Topic Intelligence**: Automatic extraction and ranking of conversation themes
+- **Model Distribution**: Usage patterns across different AI models
+- **Activity Patterns**: Session frequency and conversation volume trends
+- **Export Options**: JSON for APIs, CSV for spreadsheets, TXT for reports
+
+**Technical highlights:**
+- Zero external dependencies - uses only built-in Node.js modules
+- Intelligent text parsing with regex pattern matching for tokens, costs, and models
+- Advanced topic extraction using curated keyword dictionaries
+- Beautiful ASCII chart generation with customizable bar graphs
+- Color-coded terminal output with TTY detection
+- Comprehensive error handling and graceful degradation
+- Modular architecture with reusable analysis functions
+- Memory-efficient processing of large daily log collections
+
+**Topic categories detected:**
+- **Technical**: API, database, git, github, docker, kubernetes, programming languages, deployment, etc.
+- **Project Management**: features, bugs, issues, improvements, todos, tasks, milestones, planning
+- **General**: meetings, calls, emails, calendar, reminders, notes, decisions, discussions
+
+**Output visualizations:**
+- 📊 Summary statistics with totals and averages
+- 📈 Daily activity charts showing conversation volume over time  
+- 🤖 Model usage distribution with horizontal bar charts
+- 📝 Topic frequency analysis with visual rankings
+- 💰 Cost breakdowns and spending analysis
+- 📅 Detailed daily breakdowns in verbose mode
+
+**Result:** A production-ready conversation analytics platform that gives Sam deep insights into his AI usage patterns, spending, conversation themes, and productivity trends. The tool provides both quick overviews and detailed analysis, making it perfect for understanding how AI assistance is being utilized and optimizing for better workflows. Beautiful visualizations and export options make the data actionable for planning and decision-making.
 
 ### 2026-02-04, 2:30 AM - Reminder Review CLI
 Built `scripts/reminder-check` - a comprehensive reminder scanning tool for surfacing upcoming/overdue items.

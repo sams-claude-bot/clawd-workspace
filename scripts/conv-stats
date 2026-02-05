@@ -1,0 +1,500 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// Colors for terminal output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  gray: '\x1b[90m'
+};
+
+function colorize(text, color) {
+  return process.stdout.isTTY ? `${colors[color]}${text}${colors.reset}` : text;
+}
+
+function showHelp() {
+  console.log(`
+${colorize('📊 Conversation Stats Tracker', 'cyan')}
+${colorize('═══════════════════════════════════════', 'gray')}
+
+${colorize('USAGE:', 'bright')}
+  ./scripts/conv-stats [options] [date-range]
+
+${colorize('OPTIONS:', 'bright')}
+  -d, --days <N>        Analyze last N days (default: 7)
+  -f, --from <date>     Start from specific date (YYYY-MM-DD)
+  -t, --to <date>       End at specific date (YYYY-MM-DD)
+  --today               Analyze today only
+  --export <format>     Export data (json, csv, txt)
+  --topics              Focus on topic analysis
+  --costs               Focus on cost analysis
+  --models              Focus on model usage
+  --all                 Show all available data
+  -v, --verbose         Verbose output
+  -h, --help            Show this help
+
+${colorize('EXAMPLES:', 'bright')}
+  ./scripts/conv-stats                    # Last 7 days
+  ./scripts/conv-stats --days 30         # Last 30 days
+  ./scripts/conv-stats --today           # Today only
+  ./scripts/conv-stats --from 2026-02-01 # From specific date
+  ./scripts/conv-stats --topics          # Focus on topics
+  ./scripts/conv-stats --export json     # Export as JSON
+
+${colorize('ANALYSIS:', 'bright')}
+  • Token usage trends and patterns
+  • Cost breakdown and spending analysis
+  • Topic extraction and conversation themes
+  • Model usage distribution
+  • Session frequency and activity patterns
+  • Time-based usage analytics
+`);
+}
+
+function parseArgs(args) {
+  const options = {
+    days: 7,
+    from: null,
+    to: null,
+    today: false,
+    export: null,
+    focus: 'all', // all, topics, costs, models
+    verbose: false,
+    help: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case '-h':
+      case '--help':
+        options.help = true;
+        break;
+      case '-d':
+      case '--days':
+        options.days = parseInt(args[++i]) || 7;
+        break;
+      case '-f':
+      case '--from':
+        options.from = args[++i];
+        break;
+      case '-t':
+      case '--to':
+        options.to = args[++i];
+        break;
+      case '--today':
+        options.today = true;
+        break;
+      case '--export':
+        options.export = args[++i] || 'json';
+        break;
+      case '--topics':
+        options.focus = 'topics';
+        break;
+      case '--costs':
+        options.focus = 'costs';
+        break;
+      case '--models':
+        options.focus = 'models';
+        break;
+      case '--all':
+        options.focus = 'all';
+        break;
+      case '-v':
+      case '--verbose':
+        options.verbose = true;
+        break;
+      default:
+        // Handle date range arguments
+        if (arg.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          if (!options.from) options.from = arg;
+          else if (!options.to) options.to = arg;
+        }
+    }
+  }
+
+  return options;
+}
+
+function getDateRange(options) {
+  const today = new Date();
+  const dates = [];
+
+  if (options.today) {
+    dates.push(formatDate(today));
+  } else if (options.from && options.to) {
+    const start = new Date(options.from);
+    const end = new Date(options.to);
+    for (let d = start; d <= end; d.setDate(d.getDate() + 1)) {
+      dates.push(formatDate(new Date(d)));
+    }
+  } else if (options.from) {
+    const start = new Date(options.from);
+    for (let d = start; d <= today; d.setDate(d.getDate() + 1)) {
+      dates.push(formatDate(new Date(d)));
+    }
+  } else {
+    // Last N days
+    for (let i = options.days - 1; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      dates.push(formatDate(date));
+    }
+  }
+
+  return dates;
+}
+
+function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
+
+function findMemoryFiles(dates) {
+  const memoryDir = path.join(process.cwd(), 'memory');
+  const files = [];
+
+  for (const date of dates) {
+    const filepath = path.join(memoryDir, `${date}.md`);
+    if (fs.existsSync(filepath)) {
+      files.push({ date, path: filepath });
+    }
+  }
+
+  return files;
+}
+
+function analyzeMemoryFile(file) {
+  const content = fs.readFileSync(file.path, 'utf8');
+  const lines = content.split('\n');
+
+  const stats = {
+    date: file.date,
+    lines: lines.length,
+    characters: content.length,
+    tokens: {},
+    costs: {},
+    models: {},
+    topics: {},
+    conversations: 0,
+    sessions: 0
+  };
+
+  // Track various patterns and extract data
+  for (const line of lines) {
+    // Token usage patterns
+    const tokenMatch = line.match(/tokens?[:\s]*(\d+)/i);
+    if (tokenMatch) {
+      const count = parseInt(tokenMatch[1]);
+      stats.tokens.total = (stats.tokens.total || 0) + count;
+      stats.tokens.occurrences = (stats.tokens.occurrences || 0) + 1;
+    }
+
+    // Cost patterns
+    const costMatch = line.match(/cost[:\s]*\$?([0-9.]+)/i);
+    if (costMatch) {
+      const cost = parseFloat(costMatch[1]);
+      stats.costs.total = (stats.costs.total || 0) + cost;
+      stats.costs.occurrences = (stats.costs.occurrences || 0) + 1;
+    }
+
+    // Model patterns
+    const modelMatch = line.match(/model[=:\s]+([a-z0-9\-\/]+)/i);
+    if (modelMatch) {
+      const model = modelMatch[1];
+      stats.models[model] = (stats.models[model] || 0) + 1;
+    }
+
+    // Session patterns
+    if (line.match(/session|conversation|chat/i)) {
+      stats.conversations++;
+    }
+
+    // Topic extraction (simple keyword-based)
+    const topics = extractTopics(line);
+    for (const topic of topics) {
+      stats.topics[topic] = (stats.topics[topic] || 0) + 1;
+    }
+  }
+
+  return stats;
+}
+
+function extractTopics(line) {
+  const topics = [];
+  
+  // Technical topics
+  const techKeywords = ['API', 'database', 'git', 'github', 'docker', 'kubernetes', 'node', 'react', 'python', 'javascript', 'typescript', 'code', 'programming', 'deployment', 'server', 'client', 'frontend', 'backend', 'build', 'test', 'debug'];
+  
+  // Project topics
+  const projectKeywords = ['project', 'feature', 'bug', 'issue', 'fix', 'improvement', 'todo', 'task', 'milestone', 'deadline', 'planning', 'design', 'architecture'];
+  
+  // General topics
+  const generalKeywords = ['meeting', 'call', 'email', 'calendar', 'reminder', 'note', 'decision', 'discussion', 'question', 'answer', 'help', 'support'];
+
+  const allKeywords = [...techKeywords, ...projectKeywords, ...generalKeywords];
+  
+  for (const keyword of allKeywords) {
+    if (line.toLowerCase().includes(keyword.toLowerCase())) {
+      topics.push(keyword.toLowerCase());
+    }
+  }
+
+  return [...new Set(topics)]; // Remove duplicates
+}
+
+function aggregateStats(fileStats) {
+  const aggregate = {
+    totalDays: fileStats.length,
+    totalLines: 0,
+    totalCharacters: 0,
+    totalTokens: 0,
+    totalCosts: 0,
+    totalConversations: 0,
+    models: {},
+    topics: {},
+    dailyStats: fileStats,
+    avgTokensPerDay: 0,
+    avgCostsPerDay: 0,
+    avgConversationsPerDay: 0
+  };
+
+  for (const stat of fileStats) {
+    aggregate.totalLines += stat.lines;
+    aggregate.totalCharacters += stat.characters;
+    aggregate.totalTokens += stat.tokens.total || 0;
+    aggregate.totalCosts += stat.costs.total || 0;
+    aggregate.totalConversations += stat.conversations;
+
+    // Aggregate models
+    for (const [model, count] of Object.entries(stat.models)) {
+      aggregate.models[model] = (aggregate.models[model] || 0) + count;
+    }
+
+    // Aggregate topics
+    for (const [topic, count] of Object.entries(stat.topics)) {
+      aggregate.topics[topic] = (aggregate.topics[topic] || 0) + count;
+    }
+  }
+
+  // Calculate averages
+  if (aggregate.totalDays > 0) {
+    aggregate.avgTokensPerDay = Math.round(aggregate.totalTokens / aggregate.totalDays);
+    aggregate.avgCostsPerDay = (aggregate.totalCosts / aggregate.totalDays).toFixed(2);
+    aggregate.avgConversationsPerDay = Math.round(aggregate.totalConversations / aggregate.totalDays);
+  }
+
+  return aggregate;
+}
+
+function generateChart(data, title, width = 50) {
+  const lines = [`\n${colorize(title, 'cyan')}`, colorize('─'.repeat(title.length), 'gray')];
+  
+  if (Array.isArray(data)) {
+    // Time series data
+    const max = Math.max(...data.map(d => d.value));
+    for (const item of data) {
+      const barLength = Math.round((item.value / max) * width);
+      const bar = '█'.repeat(barLength) + '░'.repeat(width - barLength);
+      lines.push(`${item.label.padEnd(12)} │${colorize(bar, 'green')}│ ${item.value}`);
+    }
+  } else {
+    // Object data
+    const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const max = Math.max(...entries.map(([, count]) => count));
+    
+    for (const [key, count] of entries) {
+      const barLength = Math.round((count / max) * width);
+      const bar = '█'.repeat(barLength) + '░'.repeat(width - barLength);
+      lines.push(`${key.padEnd(15)} │${colorize(bar, 'blue')}│ ${count}`);
+    }
+  }
+  
+  return lines.join('\n');
+}
+
+function displayResults(stats, options) {
+  console.log(`\n${colorize('📊 CONVERSATION STATISTICS', 'bright')}`);
+  console.log(`${colorize('═'.repeat(50), 'gray')}\n`);
+
+  // Summary
+  console.log(`${colorize('📋 SUMMARY', 'yellow')}`);
+  console.log(`${colorize('─'.repeat(20), 'gray')}`);
+  console.log(`Total Days Analyzed: ${colorize(stats.totalDays, 'bright')}`);
+  console.log(`Total Conversations: ${colorize(stats.totalConversations, 'bright')}`);
+  console.log(`Total Lines: ${colorize(stats.totalLines.toLocaleString(), 'bright')}`);
+  console.log(`Total Characters: ${colorize(stats.totalCharacters.toLocaleString(), 'bright')}\n`);
+
+  // Token usage
+  if (options.focus === 'all' || options.focus === 'tokens') {
+    console.log(`${colorize('🔤 TOKEN USAGE', 'yellow')}`);
+    console.log(`${colorize('─'.repeat(20), 'gray')}`);
+    console.log(`Total Tokens: ${colorize(stats.totalTokens.toLocaleString(), 'green')}`);
+    console.log(`Average/Day: ${colorize(stats.avgTokensPerDay.toLocaleString(), 'green')}\n`);
+  }
+
+  // Cost analysis
+  if (options.focus === 'all' || options.focus === 'costs') {
+    console.log(`${colorize('💰 COST ANALYSIS', 'yellow')}`);
+    console.log(`${colorize('─'.repeat(20), 'gray')}`);
+    console.log(`Total Costs: ${colorize('$' + stats.totalCosts.toFixed(2), 'green')}`);
+    console.log(`Average/Day: ${colorize('$' + stats.avgCostsPerDay, 'green')}\n`);
+  }
+
+  // Model usage
+  if (options.focus === 'all' || options.focus === 'models') {
+    if (Object.keys(stats.models).length > 0) {
+      console.log(generateChart(stats.models, '🤖 MODEL USAGE'));
+      console.log();
+    }
+  }
+
+  // Topics
+  if (options.focus === 'all' || options.focus === 'topics') {
+    if (Object.keys(stats.topics).length > 0) {
+      console.log(generateChart(stats.topics, '📝 CONVERSATION TOPICS'));
+      console.log();
+    }
+  }
+
+  // Daily breakdown (if verbose)
+  if (options.verbose && stats.dailyStats.length > 1) {
+    console.log(`${colorize('📅 DAILY BREAKDOWN', 'yellow')}`);
+    console.log(`${colorize('─'.repeat(20), 'gray')}`);
+    
+    for (const day of stats.dailyStats) {
+      const date = day.date;
+      const tokens = day.tokens.total || 0;
+      const costs = day.costs.total || 0;
+      const convs = day.conversations;
+      
+      console.log(`${date}: ${tokens.toLocaleString()} tokens, $${costs.toFixed(2)}, ${convs} conversations`);
+    }
+    console.log();
+  }
+
+  // Activity chart
+  if (stats.dailyStats.length > 1) {
+    const activityData = stats.dailyStats.map(day => ({
+      label: day.date.substring(5), // MM-DD
+      value: day.conversations
+    }));
+    
+    console.log(generateChart(activityData, '📈 DAILY ACTIVITY'));
+    console.log();
+  }
+}
+
+function exportData(stats, format, filename) {
+  const data = {
+    summary: {
+      totalDays: stats.totalDays,
+      totalTokens: stats.totalTokens,
+      totalCosts: stats.totalCosts,
+      totalConversations: stats.totalConversations,
+      avgTokensPerDay: stats.avgTokensPerDay,
+      avgCostsPerDay: parseFloat(stats.avgCostsPerDay)
+    },
+    models: stats.models,
+    topics: stats.topics,
+    dailyStats: stats.dailyStats
+  };
+
+  switch (format) {
+    case 'json':
+      fs.writeFileSync(filename, JSON.stringify(data, null, 2));
+      break;
+    case 'csv':
+      const csvLines = ['Date,Tokens,Costs,Conversations'];
+      for (const day of stats.dailyStats) {
+        csvLines.push(`${day.date},${day.tokens.total || 0},${day.costs.total || 0},${day.conversations}`);
+      }
+      fs.writeFileSync(filename, csvLines.join('\n'));
+      break;
+    case 'txt':
+      // Simple text export
+      const txtContent = `Conversation Statistics Export\n${'='.repeat(40)}\n\n` +
+        `Total Days: ${stats.totalDays}\n` +
+        `Total Tokens: ${stats.totalTokens}\n` +
+        `Total Costs: $${stats.totalCosts.toFixed(2)}\n` +
+        `Total Conversations: ${stats.totalConversations}\n\n` +
+        `Daily Breakdown:\n${'-'.repeat(20)}\n` +
+        stats.dailyStats.map(d => `${d.date}: ${d.conversations} conversations`).join('\n');
+      fs.writeFileSync(filename, txtContent);
+      break;
+  }
+
+  console.log(`${colorize('✅ Exported to:', 'green')} ${filename}`);
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  const options = parseArgs(args);
+
+  if (options.help) {
+    showHelp();
+    return;
+  }
+
+  try {
+    // Get date range
+    const dates = getDateRange(options);
+    console.log(`${colorize('🔍 Analyzing:', 'cyan')} ${dates.length} days (${dates[0]} to ${dates[dates.length-1]})`);
+
+    // Find memory files
+    const memoryFiles = findMemoryFiles(dates);
+    if (memoryFiles.length === 0) {
+      console.log(`${colorize('⚠️  No memory files found for the specified date range.', 'yellow')}`);
+      console.log(`${colorize('   Expected files in:', 'gray')} memory/YYYY-MM-DD.md`);
+      return;
+    }
+
+    console.log(`${colorize('📁 Found:', 'green')} ${memoryFiles.length} memory files`);
+
+    // Analyze each file
+    const fileStats = [];
+    for (const file of memoryFiles) {
+      const stats = analyzeMemoryFile(file);
+      fileStats.push(stats);
+      if (options.verbose) {
+        console.log(`${colorize('  ✓', 'green')} ${file.date}: ${stats.lines} lines, ${stats.conversations} conversations`);
+      }
+    }
+
+    // Aggregate results
+    const aggregateData = aggregateStats(fileStats);
+
+    // Display results
+    displayResults(aggregateData, options);
+
+    // Export if requested
+    if (options.export) {
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `conv-stats-${timestamp}.${options.export}`;
+      exportData(aggregateData, options.export, filename);
+    }
+
+  } catch (error) {
+    console.error(`${colorize('❌ Error:', 'red')} ${error.message}`);
+    if (options.verbose) {
+      console.error(error.stack);
+    }
+    process.exit(1);
+  }
+}
+
+// Run if called directly
+if (require.main === module) {
+  main();
+}
+
+module.exports = { analyzeMemoryFile, aggregateStats, extractTopics };
