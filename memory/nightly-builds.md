@@ -3,7 +3,7 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-- [ ] Link saver/organizer (URLs mentioned in chats → organized list)
+(All current ideas completed! 🎉)
 
 ## Completed Builds
 - [x] **Reminder review CLI** (`scripts/reminder-check`) - comprehensive tool for surfacing upcoming/overdue reminders
@@ -15,8 +15,72 @@ Small improvements I build while Sam sleeps.
 - [x] **Git commit summarizer** (`scripts/git-summary`) - daily development activity tracker
 - [x] **Calendar conflict detector** (`scripts/cal-conflicts`) - CLI tool for detecting overlapping calendar events
 - [x] **Conversation stats tracker** (`scripts/conv-stats`) - comprehensive analytics tool for conversation data
+- [x] **Link saver/organizer** (`scripts/link-saver`) - extract and organize URLs from memory files
 
 ## Build Log
+
+### 2026-02-06, 2:30 AM - Link Saver/Organizer
+Built `scripts/link-saver` - a comprehensive URL extraction and organization tool for memory files.
+
+**Features:**
+- **Multi-source scanning**: Extracts URLs from memory/*.md files and MEMORY.md using robust regex patterns
+- **Intelligent context extraction**: Captures surrounding text (up to 200 chars) for each URL to provide meaningful context
+- **Flexible date filtering**: Scan last N days, specific date ranges, or all files with `--days` and `--all` options
+- **Domain-based organization**: Groups URLs by domain and sorts by frequency for easy browsing
+- **Multiple output formats**: Support for markdown (default), JSON, and plain text formats
+- **Smart filtering**: Filter by specific domains (e.g., `--domain github.com`) for focused results
+- **Beautiful terminal output**: Color-coded progress messages with emoji indicators and detailed statistics
+- **Comprehensive CLI**: Full help system, verbose mode, and flexible command-line options
+- **Duplicate removal**: Automatically deduplicates URLs while preserving the first occurrence context
+- **Source tracking**: Shows exact file path and line numbers for each URL for easy reference
+
+**Command line interface:**
+- `./scripts/link-saver` - Scan last 30 days (default)
+- `./scripts/link-saver --days 7` - Scan last week only  
+- `./scripts/link-saver --all --verbose` - Scan all files with detailed progress
+- `./scripts/link-saver --domain github.com` - Filter to GitHub links only
+- `./scripts/link-saver --format json --output links.json` - Export as JSON
+- `./scripts/link-saver --help` - Comprehensive usage documentation
+
+**Output features:**
+- **Markdown format**: Clean format with clickable links, context, and source references
+- **JSON format**: Structured data with metadata for programmatic use
+- **Text format**: Plain text output suitable for scripts or simple viewing
+- **Statistics**: Shows total links found, unique count, domain distribution, and top domains
+- **Metadata**: Includes generation timestamp, scan period, and filter information
+
+**Technical highlights:**
+- Zero external dependencies - uses only built-in Node.js modules
+- Robust URL regex pattern handling various URL formats and edge cases
+- Smart date parsing and file filtering based on filename patterns
+- Memory-efficient processing of large daily log collections
+- Comprehensive error handling with graceful degradation
+- Modular architecture with separate extraction, organization, and formatting functions
+- Cross-platform compatibility with standard Node.js file system APIs
+- Clean trailing punctuation removal from extracted URLs
+
+**URL extraction capabilities:**
+- Supports http and https protocols
+- Handles URLs with complex query parameters and fragments
+- Extracts from markdown links, plain text, and code blocks
+- Removes common trailing punctuation (periods, commas, etc.)
+- Preserves URL integrity while cleaning display format
+
+**Organization features:**
+- Groups by domain name for easy categorization
+- Sorts domains by link count (most frequent first)
+- Maintains chronological order within each domain
+- Shows link count per domain in section headers
+- Provides quick domain statistics summary
+
+**Context intelligence:**
+- Captures 1 line before and after each URL for context
+- Truncates context to 200 characters with ellipsis for readability
+- Preserves meaningful surrounding text while avoiding information overload
+- Shows exact source location (file:line) for easy reference
+- Includes date information extracted from filename patterns
+
+**Result:** A production-ready URL management system that helps Sam track and organize every link mentioned in conversations. Perfect for research projects, reference collections, or finding that useful link from weeks ago. The tool provides multiple views and formats, making it suitable for both quick browsing and data analysis workflows.
 
 ### 2026-02-05, 2:30 AM - Conversation Stats Tracker
 Built `scripts/conv-stats` - a comprehensive conversation analytics tool for tracking usage patterns and insights.

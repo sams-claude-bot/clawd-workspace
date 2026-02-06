@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+
+/**
+ * Link Saver - Extract and organize URLs from memory files
+ * A nightly build tool for Sam's clawd workspace
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+class LinkSaver {
+  constructor() {
+    this.memoryDir = 'memory';
+    this.mainMemory = 'MEMORY.md';
+    this.urlRegex = /(https?:\/\/[^\s)]+)/gi;
+    this.options = {
+      days: 30,
+      output: 'links.md',
+      domain: null,
+      format: 'markdown',
+      verbose: false
+    };
+  }
+
+  showHelp() {
+    console.log(`
+🔗 Link Saver - Extract and organize URLs from memory files
+
+Usage: ./scripts/link-saver [options]
+
+Options:
+  --days N         Scan last N days (default: 30)
+  --domain DOMAIN  Filter by domain (e.g., github.com)
+  --output FILE    Output file (default: links.md)
+  --format FORMAT  Output format: markdown, json, text (default: markdown)
+  --all            Scan all memory files regardless of age
+  --verbose        Show detailed processing info
+  --help          Show this help
+
+Examples:
+  ./scripts/link-saver                     # Scan last 30 days
+  ./scripts/link-saver --days 7           # Scan last week
+  ./scripts/link-saver --domain github.com # Only GitHub links
+  ./scripts/link-saver --format json      # Output as JSON
+  ./scripts/link-saver --all --verbose    # Scan everything with details
+
+The tool scans memory/*.md files and MEMORY.md for URLs, extracting
+them with surrounding context for easy organization and reference.
+`);
+  }
+
+  parseArgs() {
+    const args = process.argv.slice(2);
+    
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      
+      switch (arg) {
+        case '--help':
+        case '-h':
+          this.showHelp();
+          process.exit(0);
+        case '--days':
+          this.options.days = parseInt(args[++i]) || 30;
+          break;
+        case '--domain':
+          this.options.domain = args[++i];
+          break;
+        case '--output':
+          this.options.output = args[++i];
+          break;
+        case '--format':
+          this.options.format = args[++i] || 'markdown';
+          break;
+        case '--all':
+          this.options.days = null;
+          break;
+        case '--verbose':
+          this.options.verbose = true;
+          break;
+      }
+    }
+  }
+
+  getDateString(date) {
+    return date.toISOString().split('T')[0];
+  }
+
+  getFilesToScan() {
+    const files = [this.mainMemory];
+    
+    if (!fs.existsSync(this.memoryDir)) {
+      if (this.options.verbose) console.log('📁 No memory directory found');
+      return files.filter(f => fs.existsSync(f));
+    }
+
+    const memoryFiles = fs.readdirSync(this.memoryDir)
+      .filter(f => f.match(/^\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+      .reverse(); // Most recent first
+
+    if (this.options.days) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - this.options.days);
+      const cutoffString = this.getDateString(cutoffDate);
+      
+      const filteredFiles = memoryFiles.filter(f => {
+        const fileDate = f.replace('.md', '');
+        return fileDate >= cutoffString;
+      });
+      
+      if (this.options.verbose) {
+        console.log(`📅 Filtering to files after ${cutoffString}: ${filteredFiles.length} files`);
+      }
+      
+      files.push(...filteredFiles.map(f => path.join(this.memoryDir, f)));
+    } else {
+      files.push(...memoryFiles.map(f => path.join(this.memoryDir, f)));
+    }
+
+    return files.filter(f => fs.existsSync(f));
+  }
+
+  extractLinksFromFile(filePath) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const links = [];
+      const lines = content.split('\n');
+
+      lines.forEach((line, index) => {
+        const matches = [...line.matchAll(this.urlRegex)];
+        
+        matches.forEach(match => {
+          const url = match[0].replace(/[.,;!?]$/, ''); // Clean trailing punctuation
+          const contextStart = Math.max(0, index - 1);
+          const contextEnd = Math.min(lines.length - 1, index + 1);
+          const context = lines.slice(contextStart, contextEnd + 1).join(' ').trim();
+          
+          // Extract domain
+          const domain = new URL(url).hostname;
+          
+          // Skip if domain filter doesn't match
+          if (this.options.domain && !domain.includes(this.options.domain)) {
+            return;
+          }
+          
+          links.push({
+            url,
+            domain,
+            context: context.substring(0, 200) + (context.length > 200 ? '...' : ''),
+            file: filePath,
+            line: index + 1,
+            date: this.extractDateFromFile(filePath)
+          });
+        });
+      });
+
+      return links;
+    } catch (error) {
+      if (this.options.verbose) {
+        console.log(`⚠️  Error reading ${filePath}: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  extractDateFromFile(filePath) {
+    const filename = path.basename(filePath);
+    const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : 'unknown';
+  }
+
+  organizeLinksByDomain(links) {
+    const domains = {};
+    
+    links.forEach(link => {
+      if (!domains[link.domain]) {
+        domains[link.domain] = [];
+      }
+      domains[link.domain].push(link);
+    });
+
+    // Sort domains by link count (descending)
+    return Object.entries(domains)
+      .sort(([,a], [,b]) => b.length - a.length)
+      .reduce((acc, [domain, links]) => {
+        acc[domain] = links;
+        return acc;
+      }, {});
+  }
+
+  formatMarkdown(linksByDomain, totalLinks) {
+    let output = `# 🔗 Link Collection\n\n`;
+    output += `Generated: ${new Date().toLocaleString()}\n`;
+    output += `Total links: ${totalLinks}\n`;
+    output += `Scan period: ${this.options.days ? `Last ${this.options.days} days` : 'All time'}\n`;
+    if (this.options.domain) {
+      output += `Filter: ${this.options.domain}\n`;
+    }
+    output += `\n`;
+
+    Object.entries(linksByDomain).forEach(([domain, links]) => {
+      output += `## ${domain} (${links.length})\n\n`;
+      
+      links.forEach(link => {
+        output += `- [${link.url}](${link.url})\n`;
+        output += `  - **Context:** ${link.context}\n`;
+        output += `  - **Source:** \`${link.file}:${link.line}\` (${link.date})\n\n`;
+      });
+    });
+
+    return output;
+  }
+
+  formatJSON(linksByDomain, totalLinks) {
+    return JSON.stringify({
+      generated: new Date().toISOString(),
+      totalLinks,
+      scanPeriod: this.options.days ? `${this.options.days} days` : 'all',
+      domainFilter: this.options.domain || null,
+      domains: linksByDomain
+    }, null, 2);
+  }
+
+  formatText(linksByDomain, totalLinks) {
+    let output = `LINK COLLECTION\n`;
+    output += `Generated: ${new Date().toLocaleString()}\n`;
+    output += `Total links: ${totalLinks}\n`;
+    output += `Scan period: ${this.options.days ? `Last ${this.options.days} days` : 'All time'}\n`;
+    if (this.options.domain) {
+      output += `Filter: ${this.options.domain}\n`;
+    }
+    output += `\n`;
+
+    Object.entries(linksByDomain).forEach(([domain, links]) => {
+      output += `${domain} (${links.length} links)\n`;
+      output += `${'='.repeat(domain.length + ` (${links.length} links)`.length)}\n\n`;
+      
+      links.forEach(link => {
+        output += `${link.url}\n`;
+        output += `Context: ${link.context}\n`;
+        output += `Source: ${link.file}:${link.line} (${link.date})\n\n`;
+      });
+    });
+
+    return output;
+  }
+
+  run() {
+    this.parseArgs();
+
+    console.log('🔗 Link Saver - Extracting URLs from memory files...\n');
+
+    const filesToScan = this.getFilesToScan();
+    if (filesToScan.length === 0) {
+      console.log('📂 No memory files found to scan');
+      return;
+    }
+
+    if (this.options.verbose) {
+      console.log(`📄 Scanning ${filesToScan.length} files:`);
+      filesToScan.forEach(f => console.log(`   - ${f}`));
+      console.log();
+    }
+
+    let allLinks = [];
+    filesToScan.forEach(file => {
+      const links = this.extractLinksFromFile(file);
+      allLinks = allLinks.concat(links);
+      if (this.options.verbose && links.length > 0) {
+        console.log(`🔗 Found ${links.length} links in ${file}`);
+      }
+    });
+
+    if (allLinks.length === 0) {
+      console.log('🤷 No links found in scanned files');
+      return;
+    }
+
+    // Remove duplicates
+    const uniqueLinks = allLinks.filter((link, index, self) => 
+      self.findIndex(l => l.url === link.url) === index
+    );
+
+    console.log(`📊 Found ${allLinks.length} total links (${uniqueLinks.length} unique)`);
+
+    const linksByDomain = this.organizeLinksByDomain(uniqueLinks);
+    const domainCount = Object.keys(linksByDomain).length;
+    
+    console.log(`🌐 Organized across ${domainCount} domains`);
+
+    // Format output
+    let output;
+    switch (this.options.format) {
+      case 'json':
+        output = this.formatJSON(linksByDomain, uniqueLinks.length);
+        break;
+      case 'text':
+        output = this.formatText(linksByDomain, uniqueLinks.length);
+        break;
+      default:
+        output = this.formatMarkdown(linksByDomain, uniqueLinks.length);
+    }
+
+    // Write output
+    fs.writeFileSync(this.options.output, output);
+    console.log(`💾 Saved ${uniqueLinks.length} links to ${this.options.output}`);
+
+    // Show top domains
+    console.log('\n📈 Top domains:');
+    Object.entries(linksByDomain).slice(0, 5).forEach(([domain, links]) => {
+      console.log(`   ${domain}: ${links.length} links`);
+    });
+  }
+}
+
+// Run the tool
+if (require.main === module) {
+  const linkSaver = new LinkSaver();
+  linkSaver.run();
+}
