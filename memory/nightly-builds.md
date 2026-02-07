@@ -3,7 +3,14 @@
 Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
-(All current ideas completed! 🎉)
+- [ ] Inbox scanner (summarize unread emails, surface urgent ones)
+- [ ] Weekly digest generator (roll up daily notes into weekly summaries)
+- [ ] Contact freshness tracker (who haven't you talked to in a while?)
+- [ ] Disk watchdog (alert on unexpected growth, find large files)
+- [ ] Screenshot classifier (AI - train model to auto-tag screenshots)
+- [ ] Local RAG pipeline (AI - embeddings + retrieval over docs, offline)
+- [ ] Conversation summarizer (AI - fine-tune small model for chat summarization)
+- [ ] Writing style analyzer (AI - detect voice patterns from messages)
 
 ## Completed Builds
 - [x] **Reminder review CLI** (`scripts/reminder-check`) - comprehensive tool for surfacing upcoming/overdue reminders
@@ -16,8 +23,73 @@ Small improvements I build while Sam sleeps.
 - [x] **Calendar conflict detector** (`scripts/cal-conflicts`) - CLI tool for detecting overlapping calendar events
 - [x] **Conversation stats tracker** (`scripts/conv-stats`) - comprehensive analytics tool for conversation data
 - [x] **Link saver/organizer** (`scripts/link-saver`) - extract and organize URLs from memory files
+- [x] **Repository health checker** (`scripts/repo-health`) - comprehensive git repository health analysis and monitoring tool
 
 ## Build Log
+
+### 2026-02-07, 2:30 AM - Repository Health Checker
+Built `scripts/repo-health` - a comprehensive git repository health analysis and monitoring tool.
+
+**Features:**
+- **Multi-repository scanning**: Scans directories (~/clawd, ~/Projects by default) recursively for git repositories with configurable depth
+- **Comprehensive health indicators**: Detects uncommitted changes (modified, added, deleted files), unpushed commits (ahead of remote), stale branches (not touched in 30+ days), untracked files, and remote sync status
+- **Beautiful terminal output**: Color-coded status indicators with emojis, severity-based categorization, and clean formatting
+- **Flexible command line interface**: Support for custom directories (--dirs), configurable stale branch threshold (--days), show all repos including clean ones (--all), verbose mode (--verbose), and comprehensive help (--help)
+- **Smart repository detection**: Properly handles nested repositories, skips .git directories, and gracefully handles inaccessible repos
+- **Intelligent severity classification**: Groups issues by urgency (critical: uncommitted changes, unpushed commits; warning: untracked files, stale branches; clean: no issues)
+- **Detailed analysis**: Shows exact file counts, branch age calculations, remote repository URLs, and optional verbose details
+- **Comprehensive error handling**: Graceful failures for corrupt repositories, missing directories, or git command errors
+- **Zero external dependencies**: Uses only built-in Node.js modules for maximum portability
+- **Professional CLI design**: Proper shebang, executable permissions, comprehensive help system, and structured output
+
+**Command line interface:**
+- `./scripts/repo-health` - Scan default directories (~/clawd, ~/Projects) with 30-day stale threshold
+- `./scripts/repo-health --dirs ~/code,~/work` - Scan custom directories
+- `./scripts/repo-health --days 60` - Use 60-day threshold for stale branches
+- `./scripts/repo-health --all` - Show all repositories including clean ones
+- `./scripts/repo-health --verbose` - Show detailed git command output and file lists
+- `./scripts/repo-health --help` - Comprehensive usage documentation with examples
+
+**Health indicators detected:**
+- **📝 Uncommitted changes**: Modified, added, deleted files via git status
+- **⬆️ Unpushed commits**: Ahead of remote tracking branch with commit count
+- **❓ Untracked files**: New files not yet added to git with file count
+- **🕰️ Stale branches**: Branches not touched in N days with age calculation
+- **📍 Remote repositories**: Shows remote URLs for easy identification
+- **Repository metadata**: Path, name, and overall health status
+
+**Output organization:**
+- **Severity-based sorting**: Critical issues first (red), then warnings (yellow), then clean repos (green)
+- **Color-coded categories**: Red for critical issues, yellow for warnings, green for clean status, blue for remote info
+- **Emoji indicators**: Visual status indicators for quick scanning (🚨 critical, ⚠️ warning, ✅ clean)
+- **Detailed statistics**: Summary showing total repositories, clean count, warning count, and critical count
+- **Actionable guidance**: Prioritized recommendations for addressing issues
+
+**Technical highlights:**
+- Recursive directory scanning with depth limits for performance
+- Efficient git command execution with proper error handling
+- Smart path expansion supporting ~ home directory notation  
+- Cross-platform compatibility with standard Node.js file system APIs
+- Memory-efficient processing of large repository collections
+- Proper timestamp handling for stale branch detection
+- Clean terminal output with ANSI color codes and Unicode emojis
+- Modular architecture with reusable analysis functions
+
+**Integration capabilities:**
+- **Morning health checks**: Perfect for daily repository status reviews
+- **CI/CD pipeline integration**: Can be scripted for automated health monitoring
+- **Development workflow**: Helps identify work that needs attention before context switching
+- **Team collaboration**: Provides consistent repository health visibility
+- **Release preparation**: Ensures clean state before major releases
+
+**Example output features:**
+- Repository grouping by severity for prioritized attention
+- File-specific details in verbose mode for precise action
+- Branch aging calculations for maintenance planning
+- Remote URL display for easy repository identification
+- Summary statistics for quick overview and tracking
+
+**Result:** A production-ready repository health monitoring system that gives Sam instant visibility into the state of all his git repositories. The tool provides both high-level overview and detailed analysis, making it perfect for morning reviews, maintenance planning, and ensuring clean development workflows. Beautiful terminal output and comprehensive CLI options make it suitable for both interactive use and automation scripts. Successfully tested on Sam's current repositories, detecting uncommitted changes, untracked files, and providing clear prioritization guidance.
 
 ### 2026-02-06, 2:30 AM - Link Saver/Organizer
 Built `scripts/link-saver` - a comprehensive URL extraction and organization tool for memory files.

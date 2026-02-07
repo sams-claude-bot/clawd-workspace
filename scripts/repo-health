@@ -1,0 +1,434 @@
+#!/usr/bin/env node
+
+/**
+ * Repo Health Checker - Scan git repositories for health issues
+ * Checks: uncommitted changes, unpushed commits, stale branches, untracked files
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+
+// Colors for terminal output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  gray: '\x1b[90m'
+};
+
+// CLI configuration
+const config = {
+  dirs: ['~/clawd', '~/Projects'],
+  staleDays: 30,
+  showAll: false,
+  verbose: false
+};
+
+// Repository health data structure
+class RepoHealth {
+  constructor(path) {
+    this.path = path;
+    this.name = path.split('/').pop();
+    this.issues = {
+      uncommitted: [],
+      unpushed: 0,
+      untracked: [],
+      staleBranches: [],
+      remote: null
+    };
+    this.isClean = true;
+  }
+
+  addIssue(type, data) {
+    this.isClean = false;
+    if (Array.isArray(this.issues[type])) {
+      this.issues[type].push(data);
+    } else {
+      this.issues[type] = data;
+    }
+  }
+
+  getSeverity() {
+    if (this.issues.uncommitted.length > 0 || this.issues.unpushed > 0) {
+      return 'critical';
+    }
+    if (this.issues.untracked.length > 0 || this.issues.staleBranches.length > 0) {
+      return 'warning';
+    }
+    return 'clean';
+  }
+}
+
+// Utility functions
+function colorize(text, color) {
+  return `${colors[color]}${text}${colors.reset}`;
+}
+
+function expandPath(dir) {
+  if (dir.startsWith('~/')) {
+    return path.join(require('os').homedir(), dir.slice(2));
+  }
+  return dir;
+}
+
+async function isGitRepo(dir) {
+  try {
+    const gitDir = path.join(dir, '.git');
+    return fs.existsSync(gitDir);
+  } catch (error) {
+    return false;
+  }
+}
+
+async function execGit(command, cwd) {
+  try {
+    const { stdout, stderr } = await execAsync(`git ${command}`, { cwd });
+    if (stderr && config.verbose) {
+      console.log(colorize(`    Git stderr: ${stderr.trim()}`, 'gray'));
+    }
+    return stdout.trim();
+  } catch (error) {
+    if (config.verbose) {
+      console.log(colorize(`    Git error: ${error.message}`, 'gray'));
+    }
+    return null;
+  }
+}
+
+async function findGitRepos(baseDir) {
+  const repos = [];
+  const expandedDir = expandPath(baseDir);
+  
+  if (!fs.existsSync(expandedDir)) {
+    console.log(colorize(`⚠️  Directory not found: ${baseDir}`, 'yellow'));
+    return repos;
+  }
+
+  async function scanDir(dir, depth = 0) {
+    if (depth > 3) return; // Limit recursion depth
+    
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        
+        const fullPath = path.join(dir, entry.name);
+        
+        // Skip .git directories and other hidden dirs
+        if (entry.name.startsWith('.')) continue;
+        
+        if (await isGitRepo(fullPath)) {
+          repos.push(fullPath);
+          // Don't recurse into git repos
+          continue;
+        }
+        
+        // Recurse into non-git directories
+        await scanDir(fullPath, depth + 1);
+      }
+    } catch (error) {
+      if (config.verbose) {
+        console.log(colorize(`    Cannot read directory ${dir}: ${error.message}`, 'gray'));
+      }
+    }
+  }
+
+  await scanDir(expandedDir);
+  return repos;
+}
+
+async function analyzeRepo(repoPath) {
+  const health = new RepoHealth(repoPath);
+  
+  if (config.verbose) {
+    console.log(colorize(`  Analyzing: ${repoPath}`, 'gray'));
+  }
+
+  // Check git status for uncommitted changes
+  const status = await execGit('status --porcelain', repoPath);
+  if (status) {
+    const lines = status.split('\n').filter(line => line.trim());
+    for (const line of lines) {
+      const statusCode = line.slice(0, 2);
+      const file = line.slice(3);
+      
+      if (statusCode.trim() === '??') {
+        health.addIssue('untracked', file);
+      } else {
+        health.addIssue('uncommitted', `${statusCode} ${file}`);
+      }
+    }
+  }
+
+  // Check for unpushed commits
+  const branch = await execGit('branch --show-current', repoPath);
+  if (branch) {
+    const upstream = await execGit(`rev-list --count ${branch}@{upstream}..${branch} 2>/dev/null || echo "0"`, repoPath);
+    const unpushedCount = parseInt(upstream) || 0;
+    if (unpushedCount > 0) {
+      health.addIssue('unpushed', unpushedCount);
+    }
+  }
+
+  // Check for stale branches
+  const branches = await execGit('for-each-ref --format="%(refname:short) %(committerdate:unix)" refs/heads/', repoPath);
+  if (branches) {
+    const now = Date.now() / 1000;
+    const staleThreshold = now - (config.staleDays * 24 * 60 * 60);
+    
+    const branchLines = branches.split('\n').filter(line => line.trim());
+    for (const line of branchLines) {
+      const [branchName, timestamp] = line.split(' ');
+      if (timestamp && parseInt(timestamp) < staleThreshold) {
+        const daysOld = Math.floor((now - parseInt(timestamp)) / (24 * 60 * 60));
+        health.addIssue('staleBranches', `${branchName} (${daysOld} days old)`);
+      }
+    }
+  }
+
+  // Check remote status
+  const remote = await execGit('remote -v', repoPath);
+  if (remote) {
+    const remoteLines = remote.split('\n').filter(line => line.includes('(fetch)'));
+    if (remoteLines.length > 0) {
+      health.issues.remote = remoteLines[0].split('\t')[1].split(' ')[0];
+    }
+  }
+
+  return health;
+}
+
+function printRepoHealth(health) {
+  const severity = health.getSeverity();
+  let icon, nameColor;
+  
+  switch (severity) {
+    case 'critical':
+      icon = '🚨';
+      nameColor = 'red';
+      break;
+    case 'warning':
+      icon = '⚠️ ';
+      nameColor = 'yellow';
+      break;
+    default:
+      icon = '✅';
+      nameColor = 'green';
+      break;
+  }
+
+  console.log(`\n${icon} ${colorize(health.name, nameColor)} ${colorize(`(${health.path})`, 'gray')}`);
+  
+  if (health.issues.remote) {
+    console.log(`   📍 Remote: ${colorize(health.issues.remote, 'blue')}`);
+  }
+
+  if (health.issues.uncommitted.length > 0) {
+    console.log(`   ${colorize('📝 Uncommitted changes:', 'red')} ${health.issues.uncommitted.length} files`);
+    if (config.verbose) {
+      health.issues.uncommitted.forEach(file => {
+        console.log(`      ${colorize(file, 'gray')}`);
+      });
+    }
+  }
+
+  if (health.issues.unpushed > 0) {
+    console.log(`   ${colorize('⬆️  Unpushed commits:', 'red')} ${health.issues.unpushed}`);
+  }
+
+  if (health.issues.untracked.length > 0) {
+    console.log(`   ${colorize('❓ Untracked files:', 'yellow')} ${health.issues.untracked.length}`);
+    if (config.verbose) {
+      health.issues.untracked.slice(0, 5).forEach(file => {
+        console.log(`      ${colorize(file, 'gray')}`);
+      });
+      if (health.issues.untracked.length > 5) {
+        console.log(`      ${colorize(`... and ${health.issues.untracked.length - 5} more`, 'gray')}`);
+      }
+    }
+  }
+
+  if (health.issues.staleBranches.length > 0) {
+    console.log(`   ${colorize('🕰️  Stale branches:', 'yellow')} ${health.issues.staleBranches.length}`);
+    if (config.verbose) {
+      health.issues.staleBranches.slice(0, 3).forEach(branch => {
+        console.log(`      ${colorize(branch, 'gray')}`);
+      });
+      if (health.issues.staleBranches.length > 3) {
+        console.log(`      ${colorize(`... and ${health.issues.staleBranches.length - 3} more`, 'gray')}`);
+      }
+    }
+  }
+
+  if (health.isClean && config.showAll) {
+    console.log(`   ${colorize('All clean! 🎉', 'green')}`);
+  }
+}
+
+function printSummary(results) {
+  const stats = {
+    total: results.length,
+    clean: results.filter(r => r.isClean).length,
+    critical: results.filter(r => r.getSeverity() === 'critical').length,
+    warning: results.filter(r => r.getSeverity() === 'warning').length
+  };
+
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(colorize('📊 SUMMARY', 'bright'));
+  console.log(`${colorize('Total repositories:', 'cyan')} ${stats.total}`);
+  console.log(`${colorize('Clean:', 'green')} ${stats.clean}`);
+  console.log(`${colorize('With warnings:', 'yellow')} ${stats.warning}`);
+  console.log(`${colorize('Need attention:', 'red')} ${stats.critical}`);
+  
+  if (stats.critical > 0) {
+    console.log(`\n${colorize('🎯 Priority: Fix critical issues first (uncommitted changes, unpushed commits)', 'bright')}`);
+  } else if (stats.warning > 0) {
+    console.log(`\n${colorize('💡 Consider: Clean up warnings when convenient', 'bright')}`);
+  } else {
+    console.log(`\n${colorize('🎉 All repositories are healthy!', 'green')}`);
+  }
+}
+
+function showHelp() {
+  console.log(`
+${colorize('Repo Health Checker', 'bright')} - Scan git repositories for health issues
+
+${colorize('USAGE:', 'cyan')}
+  repo-health [options]
+
+${colorize('OPTIONS:', 'cyan')}
+  --dirs <paths>     Comma-separated directories to scan (default: ~/clawd,~/Projects)
+  --days <n>         Days threshold for stale branches (default: 30)
+  --all              Show all repos including clean ones
+  --verbose          Show detailed information
+  --help             Show this help message
+
+${colorize('EXAMPLES:', 'cyan')}
+  repo-health                              # Scan default directories
+  repo-health --days 60                    # Use 60-day threshold for stale branches
+  repo-health --dirs ~/code,~/work         # Scan custom directories
+  repo-health --all --verbose              # Show everything with details
+
+${colorize('HEALTH CHECKS:', 'cyan')}
+  🚨 Critical: Uncommitted changes, unpushed commits
+  ⚠️  Warning: Untracked files, stale branches  
+  ✅ Clean: No issues found
+
+${colorize('LEGEND:', 'cyan')}
+  📝 Uncommitted changes (git status)
+  ⬆️  Unpushed commits (ahead of remote)
+  ❓ Untracked files
+  🕰️  Stale branches (not touched in N days)
+  📍 Remote repository URL
+`);
+}
+
+// Parse command line arguments
+function parseArgs() {
+  const args = process.argv.slice(2);
+  
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    
+    switch (arg) {
+      case '--help':
+      case '-h':
+        showHelp();
+        process.exit(0);
+        break;
+      case '--dirs':
+        if (i + 1 < args.length) {
+          config.dirs = args[++i].split(',').map(d => d.trim());
+        }
+        break;
+      case '--days':
+        if (i + 1 < args.length) {
+          config.staleDays = parseInt(args[++i]);
+        }
+        break;
+      case '--all':
+        config.showAll = true;
+        break;
+      case '--verbose':
+      case '-v':
+        config.verbose = true;
+        break;
+      default:
+        console.log(colorize(`Unknown option: ${arg}`, 'red'));
+        console.log('Use --help for usage information');
+        process.exit(1);
+    }
+  }
+}
+
+// Main function
+async function main() {
+  console.log(colorize('🏥 Repository Health Checker', 'bright'));
+  console.log(colorize(`Scanning directories: ${config.dirs.join(', ')}`, 'gray'));
+  console.log(colorize(`Stale branch threshold: ${config.staleDays} days`, 'gray'));
+  console.log();
+
+  const allRepos = [];
+  
+  // Find all repositories
+  for (const dir of config.dirs) {
+    console.log(colorize(`🔍 Scanning ${dir}...`, 'cyan'));
+    const repos = await findGitRepos(dir);
+    allRepos.push(...repos);
+    console.log(colorize(`   Found ${repos.length} git repositories`, 'gray'));
+  }
+
+  if (allRepos.length === 0) {
+    console.log(colorize('\n❌ No git repositories found!', 'red'));
+    console.log('Try scanning different directories with --dirs option');
+    return;
+  }
+
+  console.log(colorize(`\n📋 Analyzing ${allRepos.length} repositories...`, 'cyan'));
+
+  // Analyze each repository
+  const results = [];
+  for (const repoPath of allRepos) {
+    try {
+      const health = await analyzeRepo(repoPath);
+      results.push(health);
+    } catch (error) {
+      console.log(colorize(`❌ Error analyzing ${repoPath}: ${error.message}`, 'red'));
+    }
+  }
+
+  // Sort by severity (critical first)
+  results.sort((a, b) => {
+    const severityOrder = { critical: 0, warning: 1, clean: 2 };
+    return severityOrder[a.getSeverity()] - severityOrder[b.getSeverity()];
+  });
+
+  // Display results
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(colorize('📋 RESULTS', 'bright'));
+
+  for (const health of results) {
+    if (!health.isClean || config.showAll) {
+      printRepoHealth(health);
+    }
+  }
+
+  // Show summary
+  printSummary(results);
+}
+
+// Parse arguments and run
+parseArgs();
+main().catch(error => {
+  console.error(colorize(`💥 Fatal error: ${error.message}`, 'red'));
+  process.exit(1);
+});
