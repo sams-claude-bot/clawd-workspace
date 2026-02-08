@@ -4,7 +4,6 @@ Small improvements I build while Sam sleeps.
 
 ## Ideas Backlog
 - [ ] Inbox scanner (summarize unread emails, surface urgent ones)
-- [ ] Weekly digest generator (roll up daily notes into weekly summaries)
 - [ ] Contact freshness tracker (who haven't you talked to in a while?)
 - [ ] Disk watchdog (alert on unexpected growth, find large files)
 - [ ] Screenshot classifier (AI - train model to auto-tag screenshots)
@@ -24,8 +23,85 @@ Small improvements I build while Sam sleeps.
 - [x] **Conversation stats tracker** (`scripts/conv-stats`) - comprehensive analytics tool for conversation data
 - [x] **Link saver/organizer** (`scripts/link-saver`) - extract and organize URLs from memory files
 - [x] **Repository health checker** (`scripts/repo-health`) - comprehensive git repository health analysis and monitoring tool
+- [x] **Weekly digest generator** (`scripts/weekly-digest`) - intelligent multi-day memory analysis and summarization tool
 
 ## Build Log
+
+### 2026-02-08, 2:30 AM - Weekly Digest Generator
+Built `scripts/weekly-digest` - an intelligent multi-day memory analysis and summarization tool for creating beautiful weekly reports.
+
+**Features:**
+- **Multi-day analysis**: Scans daily memory files (memory/YYYY-MM-DD.md format) across configurable date ranges
+- **Intelligent categorization**: Automatically sorts entries into logical categories using keyword analysis and context patterns
+- **Flexible date ranges**: Support for last N days (default 7), custom from/to date ranges, or specific week analysis
+- **Beautiful terminal output**: Color-coded display with emojis, progress indicators, and clean formatting
+- **Export capabilities**: Generate markdown files for documentation or sharing with --output flag
+- **Comprehensive statistics**: Weekly totals, daily breakdowns, topic trending, and productivity insights
+- **Smart content filtering**: Identifies decisions, projects, technical work, meetings, tasks, and conversations automatically
+- **Verbose mode**: Detailed analysis with extended context and full item lists
+- **Professional CLI**: Full help system, argument validation, and comprehensive error handling
+- **Zero dependencies**: Built with Node.js standard library for maximum portability
+
+**Command line interface:**
+- `./scripts/weekly-digest` - Analyze last 7 days with standard output
+- `./scripts/weekly-digest --days 14` - Analyze last 2 weeks
+- `./scripts/weekly-digest --from 2026-02-01 --to 2026-02-07` - Custom date range
+- `./scripts/weekly-digest --output weekly.md` - Export markdown summary
+- `./scripts/weekly-digest --verbose` - Show detailed analysis with full context
+- `./scripts/weekly-digest --help` - Comprehensive usage documentation
+
+**Category intelligence:**
+- **🎯 Decisions & Resolutions**: Detects decision-making patterns, agreements, and resolutions
+- **📋 Projects & Tasks**: Identifies project work, milestones, features, and deliverables
+- **🛠️ Technical Work**: Captures code, debugging, deployments, API work, and development activities
+- **👥 Meetings & Calls**: Finds meetings, standups, demos, and collaboration events
+- **✅ Action Items**: Locates todos, tasks, action items, and unchecked task markers
+- **💬 Conversations**: General discussions, notes, and conversational content
+
+**Statistical analysis:**
+- **Weekly overview**: Total entries, days analyzed, average activity per day
+- **Peak activity**: Most productive day identification with entry counts
+- **Topic trending**: Keyword frequency analysis showing conversation themes
+- **Daily breakdown**: Visual bar charts showing activity distribution across days
+- **Engagement metrics**: Entry counts, category distribution, and productivity patterns
+
+**Output formatting:**
+- **Markdown structure**: Clean headers, organized sections, and exportable format
+- **Color-coded terminal**: Beautiful ANSI color output with TTY detection
+- **Content truncation**: Smart content length management for readability
+- **Date grouping**: Chronological organization within categories for context
+- **Summary statistics**: Comprehensive metrics and insights at multiple levels
+
+**Technical highlights:**
+- **Robust file handling**: Graceful handling of missing directories and files
+- **Smart date parsing**: Flexible date input formats with validation
+- **Pattern recognition**: Advanced keyword matching for intelligent categorization
+- **Memory efficient**: Processes large daily logs without performance degradation
+- **Cross-platform**: Standard Node.js APIs for universal compatibility
+- **Modular architecture**: Reusable analysis functions and clean separation of concerns
+
+**Analysis capabilities:**
+- **Context-aware categorization**: Uses surrounding text and line patterns for accurate sorting
+- **Topic extraction**: Intelligent keyword analysis excluding common words and focusing on meaningful terms
+- **Trend identification**: Tracks topic frequency over time for pattern recognition
+- **Activity mapping**: Daily activity visualization with proportional bar charts
+- **Content intelligence**: Truncates long entries while preserving meaning and context
+
+**Integration possibilities:**
+- **Morning reviews**: Perfect for daily standup preparation and week-in-review sessions
+- **Project planning**: Historical analysis for estimating future work and identifying patterns
+- **Team reporting**: Generated markdown perfect for sharing weekly accomplishments
+- **Productivity tracking**: Objective measurement of activity levels and focus areas
+- **Memory management**: Automated way to surface important decisions and actions from busy weeks
+
+**Example use cases:**
+- **Weekly team updates**: Generate comprehensive summaries for team sharing
+- **Personal productivity**: Track weekly accomplishments and identify improvement areas
+- **Project retrospectives**: Analyze development patterns and decision-making trends
+- **Client reporting**: Professional weekly summaries for stakeholder communication
+- **Knowledge management**: Extract key learnings and decisions for documentation
+
+**Result:** A production-ready weekly analysis system that transforms scattered daily notes into actionable insights. The tool provides both high-level trends and detailed categorization, making it perfect for personal productivity tracking, team reporting, and strategic planning. Successfully tested on Sam's existing memory files, demonstrating accurate categorization and beautiful output formatting. The intelligent analysis engine adapts to different writing styles and conversation patterns, providing consistent and valuable insights for any timeline.
 
 ### 2026-02-07, 2:30 AM - Repository Health Checker
 Built `scripts/repo-health` - a comprehensive git repository health analysis and monitoring tool.

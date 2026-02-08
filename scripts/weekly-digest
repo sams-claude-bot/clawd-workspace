@@ -1,0 +1,397 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Weekly Digest Generator
+ * Creates beautiful summaries from daily memory files
+ */
+
+const COLORS = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  gray: '\x1b[90m'
+};
+
+function colorize(text, color) {
+  if (!process.stdout.isTTY) return text;
+  return `${COLORS[color]}${text}${COLORS.reset}`;
+}
+
+function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const config = {
+    days: 7,
+    from: null,
+    to: null,
+    output: null,
+    verbose: false,
+    help: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case '--days':
+      case '-d':
+        config.days = parseInt(args[++i]) || 7;
+        break;
+      case '--from':
+        config.from = new Date(args[++i]);
+        break;
+      case '--to':
+        config.to = new Date(args[++i]);
+        break;
+      case '--output':
+      case '-o':
+        config.output = args[++i];
+        break;
+      case '--verbose':
+      case '-v':
+        config.verbose = true;
+        break;
+      case '--help':
+      case '-h':
+        config.help = true;
+        break;
+      default:
+        if (!arg.startsWith('--')) {
+          config.days = parseInt(arg) || 7;
+        }
+    }
+  }
+
+  return config;
+}
+
+function showHelp() {
+  const help = `
+${colorize('📅 Weekly Digest Generator', 'bright')}
+
+${colorize('USAGE:', 'yellow')}
+  weekly-digest [options]
+
+${colorize('OPTIONS:', 'yellow')}
+  -d, --days N        Days to analyze (default: 7)
+  --from YYYY-MM-DD   Start date for custom range
+  --to YYYY-MM-DD     End date for custom range
+  -o, --output FILE   Save markdown output to file
+  -v, --verbose       Show detailed analysis
+  -h, --help          Show this help
+
+${colorize('EXAMPLES:', 'yellow')}
+  weekly-digest                    # Last 7 days
+  weekly-digest --days 14          # Last 2 weeks
+  weekly-digest --from 2026-02-01 --to 2026-02-07
+  weekly-digest --output weekly.md # Save to file
+
+${colorize('CATEGORIES:', 'yellow')}
+  🎯 Decisions & Resolutions
+  📋 Projects & Tasks
+  🛠️ Technical Work
+  👥 Meetings & Calls
+  💬 Conversations
+  📊 Weekly Statistics
+`;
+  console.log(help);
+}
+
+function getDateRange(config) {
+  if (config.from && config.to) {
+    return { start: config.from, end: config.to };
+  }
+
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - (config.days - 1));
+  
+  return { start, end };
+}
+
+function getMemoryFiles(dateRange) {
+  const memoryDir = path.join(process.cwd(), 'memory');
+  const files = [];
+  
+  if (!fs.existsSync(memoryDir)) {
+    console.log(colorize('⚠️ Memory directory not found', 'yellow'));
+    return files;
+  }
+
+  const current = new Date(dateRange.start);
+  while (current <= dateRange.end) {
+    const filename = formatDate(current) + '.md';
+    const filepath = path.join(memoryDir, filename);
+    
+    if (fs.existsSync(filepath)) {
+      files.push({
+        date: formatDate(current),
+        path: filepath,
+        content: fs.readFileSync(filepath, 'utf8')
+      });
+    }
+    
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return files;
+}
+
+function categorizeEntry(line, context) {
+  const lower = line.toLowerCase();
+  
+  // Decision patterns
+  if (lower.includes('decided') || lower.includes('decision') || 
+      lower.includes('chose') || lower.includes('resolved') ||
+      lower.includes('agreed') || lower.includes('settled')) {
+    return 'decisions';
+  }
+  
+  // Project patterns
+  if (lower.includes('project') || lower.includes('feature') ||
+      lower.includes('milestone') || lower.includes('deliverable') ||
+      lower.includes('sprint') || lower.includes('epic')) {
+    return 'projects';
+  }
+  
+  // Technical patterns
+  if (lower.includes('code') || lower.includes('debug') ||
+      lower.includes('deploy') || lower.includes('api') ||
+      lower.includes('database') || lower.includes('git') ||
+      lower.includes('build') || lower.includes('test') ||
+      lower.includes('bug') || lower.includes('fix')) {
+    return 'technical';
+  }
+  
+  // Meeting patterns
+  if (lower.includes('meeting') || lower.includes('call') ||
+      lower.includes('standup') || lower.includes('sync') ||
+      lower.includes('demo') || lower.includes('presentation')) {
+    return 'meetings';
+  }
+  
+  // Task patterns
+  if (lower.includes('todo') || lower.includes('task') ||
+      lower.includes('action') || lower.includes('follow up') ||
+      lower.includes('next steps') || line.trim().startsWith('- [ ]') ||
+      line.trim().startsWith('* [ ]')) {
+    return 'tasks';
+  }
+  
+  return 'conversations';
+}
+
+function analyzeFiles(files, config) {
+  const categories = {
+    decisions: [],
+    projects: [],
+    technical: [],
+    meetings: [],
+    tasks: [],
+    conversations: []
+  };
+  
+  const dailyStats = {};
+  const topicCounts = {};
+  let totalEntries = 0;
+
+  files.forEach(file => {
+    const lines = file.content.split('\n').filter(line => line.trim());
+    dailyStats[file.date] = lines.length;
+    totalEntries += lines.length;
+    
+    lines.forEach((line, index) => {
+      if (line.trim().length < 10) return; // Skip very short lines
+      
+      const category = categorizeEntry(line, { 
+        prevLine: lines[index - 1] || '',
+        nextLine: lines[index + 1] || ''
+      });
+      
+      const entry = {
+        date: file.date,
+        content: line.trim(),
+        line: index + 1
+      };
+      
+      categories[category].push(entry);
+      
+      // Extract topics for trending
+      const words = line.toLowerCase().match(/\b\w{4,}\b/g) || [];
+      words.forEach(word => {
+        if (!['this', 'that', 'with', 'have', 'been', 'were', 'they', 'them', 'from', 'into'].includes(word)) {
+          topicCounts[word] = (topicCounts[word] || 0) + 1;
+        }
+      });
+    });
+  });
+
+  // Get top topics
+  const topTopics = Object.entries(topicCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 10)
+    .map(([topic, count]) => ({ topic, count }));
+
+  // Find most active day
+  const mostActiveDay = Object.entries(dailyStats)
+    .sort(([,a], [,b]) => b - a)[0] || ['N/A', 0];
+
+  return {
+    categories,
+    stats: {
+      totalEntries,
+      totalDays: files.length,
+      avgEntriesPerDay: Math.round(totalEntries / files.length),
+      mostActiveDay: { date: mostActiveDay[0], count: mostActiveDay[1] },
+      topTopics,
+      dailyStats
+    }
+  };
+}
+
+function generateOutput(analysis, dateRange, config) {
+  const { categories, stats } = analysis;
+  const startDate = formatDate(dateRange.start);
+  const endDate = formatDate(dateRange.end);
+  
+  let output = [];
+  
+  // Header
+  output.push(`# 📅 Weekly Digest: ${startDate} to ${endDate}\n`);
+  
+  // Statistics
+  output.push(`## 📊 Weekly Statistics\n`);
+  output.push(`- **Total entries:** ${stats.totalEntries}`);
+  output.push(`- **Days analyzed:** ${stats.totalDays}`);
+  output.push(`- **Average per day:** ${stats.avgEntriesPerDay}`);
+  output.push(`- **Most active day:** ${stats.mostActiveDay.date} (${stats.mostActiveDay.count} entries)`);
+  output.push('');
+  
+  if (stats.topTopics.length > 0) {
+    output.push(`**Top topics:** ${stats.topTopics.slice(0, 5).map(t => `${t.topic} (${t.count})`).join(', ')}\n`);
+  }
+
+  // Categories
+  const categoryConfig = {
+    decisions: { emoji: '🎯', title: 'Key Decisions & Resolutions' },
+    projects: { emoji: '📋', title: 'Projects & Tasks' },
+    technical: { emoji: '🛠️', title: 'Technical Work' },
+    meetings: { emoji: '👥', title: 'Meetings & Calls' },
+    tasks: { emoji: '✅', title: 'Action Items' },
+    conversations: { emoji: '💬', title: 'Conversations & Notes' }
+  };
+
+  Object.entries(categoryConfig).forEach(([key, meta]) => {
+    const items = categories[key];
+    if (items.length === 0) return;
+    
+    output.push(`## ${meta.emoji} ${meta.title}\n`);
+    
+    // Group by date
+    const byDate = {};
+    items.forEach(item => {
+      if (!byDate[item.date]) byDate[item.date] = [];
+      byDate[item.date].push(item);
+    });
+    
+    Object.entries(byDate).forEach(([date, dateItems]) => {
+      output.push(`### ${date}`);
+      dateItems.slice(0, config.verbose ? 20 : 5).forEach(item => {
+        const content = item.content.length > 100 ? 
+          item.content.substring(0, 97) + '...' : 
+          item.content;
+        output.push(`- ${content}`);
+      });
+      
+      if (!config.verbose && dateItems.length > 5) {
+        output.push(`- *...and ${dateItems.length - 5} more items*`);
+      }
+      output.push('');
+    });
+  });
+
+  // Daily breakdown
+  output.push(`## 📈 Daily Breakdown\n`);
+  Object.entries(stats.dailyStats).sort().forEach(([date, count]) => {
+    const bar = '█'.repeat(Math.min(20, Math.round(count / 5)));
+    output.push(`**${date}:** ${count} entries ${bar}`);
+  });
+  
+  output.push('');
+  output.push(`*Generated on ${formatDate(new Date())} by weekly-digest*`);
+  
+  return output.join('\n');
+}
+
+function printToTerminal(output) {
+  const lines = output.split('\n');
+  
+  lines.forEach(line => {
+    if (line.startsWith('# ')) {
+      console.log(colorize(line, 'bright'));
+    } else if (line.startsWith('## ')) {
+      console.log(colorize(line, 'cyan'));
+    } else if (line.startsWith('### ')) {
+      console.log(colorize(line, 'yellow'));
+    } else if (line.startsWith('**') && line.endsWith('**')) {
+      console.log(colorize(line, 'bright'));
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      console.log(colorize(line, 'white'));
+    } else if (line.startsWith('*') && line.endsWith('*')) {
+      console.log(colorize(line, 'gray'));
+    } else {
+      console.log(line);
+    }
+  });
+}
+
+function main() {
+  const config = parseArgs();
+  
+  if (config.help) {
+    showHelp();
+    return;
+  }
+  
+  console.log(colorize('📅 Generating weekly digest...', 'cyan'));
+  
+  const dateRange = getDateRange(config);
+  console.log(colorize(`📊 Analyzing ${formatDate(dateRange.start)} to ${formatDate(dateRange.end)}`, 'gray'));
+  
+  const files = getMemoryFiles(dateRange);
+  
+  if (files.length === 0) {
+    console.log(colorize('⚠️ No memory files found for the specified date range', 'yellow'));
+    return;
+  }
+  
+  console.log(colorize(`📁 Found ${files.length} memory files`, 'green'));
+  
+  const analysis = analyzeFiles(files, config);
+  const output = generateOutput(analysis, dateRange, config);
+  
+  if (config.output) {
+    fs.writeFileSync(config.output, output);
+    console.log(colorize(`✅ Saved to ${config.output}`, 'green'));
+  } else {
+    console.log('');
+    printToTerminal(output);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { analyzeFiles, generateOutput };
