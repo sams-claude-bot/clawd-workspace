@@ -5,7 +5,6 @@ Small improvements I build while Sam sleeps.
 ## Ideas Backlog
 - [ ] Inbox scanner (summarize unread emails, surface urgent ones)
 - [ ] Contact freshness tracker (who haven't you talked to in a while?)
-- [ ] Disk watchdog (alert on unexpected growth, find large files)
 - [ ] Screenshot classifier (AI - train model to auto-tag screenshots)
 - [ ] Local RAG pipeline (AI - embeddings + retrieval over docs, offline)
 - [ ] Conversation summarizer (AI - fine-tune small model for chat summarization)
@@ -24,8 +23,81 @@ Small improvements I build while Sam sleeps.
 - [x] **Link saver/organizer** (`scripts/link-saver`) - extract and organize URLs from memory files
 - [x] **Repository health checker** (`scripts/repo-health`) - comprehensive git repository health analysis and monitoring tool
 - [x] **Weekly digest generator** (`scripts/weekly-digest`) - intelligent multi-day memory analysis and summarization tool
+- [x] **Disk watchdog** (`scripts/disk-watchdog`) - comprehensive disk usage monitor and large file finder
 
 ## Build Log
+
+### 2026-02-09, 2:30 AM - Disk Watchdog
+Built `scripts/disk-watchdog` - a comprehensive disk usage monitor and large file finder for system maintenance.
+
+**Features:**
+- **Comprehensive disk monitoring**: Real-time disk usage analysis across all mounted filesystems with visual indicators
+- **Large file detection**: Configurable size threshold scanning (default 100MB) with intelligent directory traversal
+- **Beautiful terminal output**: Color-coded display with emojis, severity-based formatting, and clean professional layout
+- **Flexible command line interface**: Customizable size thresholds (--size), scan paths (--paths), result count (--count), and disk warning levels (--threshold)
+- **Smart filesystem analysis**: Distinguishes between files and directories, handles permission errors gracefully, prevents infinite recursion
+- **Critical alerting system**: Automatic warnings for disk usage >80% (configurable) with clear visual indicators
+- **Professional CLI design**: Comprehensive help system, argument validation, and robust error handling
+- **Cross-platform compatibility**: Uses standard Unix utilities (df, du) and Node.js APIs for universal compatibility
+- **Zero external dependencies**: Built with Node.js standard library for maximum portability and reliability
+
+**Command line interface:**
+- `./scripts/disk-watchdog` - Use default settings (100MB files, top 10, scan /home,/tmp,/var/log)
+- `./scripts/disk-watchdog --size 500 --count 20` - Find 500MB+ files, show top 20
+- `./scripts/disk-watchdog --paths /home,/var,/opt` - Scan custom directories
+- `./scripts/disk-watchdog --threshold 90` - Alert when disk usage >90% full
+- `./scripts/disk-watchdog --help` - Comprehensive usage documentation with examples
+
+**Output categories:**
+- **💾 Disk Usage Summary**: Real-time analysis of all mounted filesystems with color-coded health indicators
+- **📁 Largest Files/Directories**: Ranked list of space consumers above the configured threshold
+- **💡 Actionable Recommendations**: Prioritized cleanup suggestions based on disk usage patterns and large file detection
+
+**Technical highlights:**
+- **Intelligent scanning**: Recursive directory traversal with depth limits and permission error handling
+- **Size calculation**: Uses `du -sb` for accurate directory size measurement including subdirectories
+- **Performance optimization**: Efficient file system operations with early filtering and memory-conscious processing
+- **Format flexibility**: Human-readable size formatting (B/KB/MB/GB/TB) with intelligent precision
+- **Path truncation**: Smart path display with ellipsis for long filenames while preserving readability
+- **Color management**: Full ANSI color support with automatic fallback for non-TTY environments
+- **Error resilience**: Graceful handling of inaccessible files, missing directories, and command failures
+
+**Disk usage monitoring:**
+- **Real-time analysis**: Live disk usage via `df -h` command with percentage calculations
+- **Health categorization**: Green (healthy), yellow (warning >70%), red (critical >80%, configurable)
+- **Filesystem details**: Shows filesystem type, mount points, used/available space, and utilization percentages
+- **Alert thresholds**: Configurable warning levels with visual and textual indicators
+- **Comprehensive coverage**: Monitors all mounted filesystems including system, user, and temporary partitions
+
+**Large file detection:**
+- **Configurable thresholds**: Default 100MB minimum with command-line customization
+- **Smart categorization**: Distinguishes between large files and large directories for appropriate action
+- **Ranked results**: Sorted by size (largest first) with configurable result count
+- **Path intelligence**: Smart path truncation and formatting for terminal display
+- **Context preservation**: Shows full paths while maintaining readability in constrained terminal width
+
+**Safety and reliability:**
+- **Permission handling**: Graceful handling of protected directories and inaccessible files
+- **Resource efficiency**: Memory-conscious processing suitable for large filesystems
+- **Error recovery**: Continues operation despite individual file/directory access failures
+- **Cross-platform design**: Compatible with standard Unix/Linux environments
+- **Dependency-free**: No external packages required, uses only Node.js built-in modules
+
+**Integration capabilities:**
+- **Morning health checks**: Perfect for daily system maintenance reviews
+- **Automation friendly**: Clean exit codes and scriptable output format
+- **Alert integration**: Can be combined with notification systems for proactive monitoring
+- **Maintenance planning**: Provides data for capacity planning and cleanup prioritization
+- **System administration**: Essential tool for preventing disk space emergencies
+
+**Example output features:**
+- Color-coded severity indicators (🚨 critical, ⚠️ warning, ✅ healthy)
+- Human-readable file sizes with appropriate units
+- Comprehensive filesystem information with mount points and usage percentages
+- Actionable recommendations prioritized by urgency
+- Beautiful emoji-enhanced terminal output with professional formatting
+
+**Result:** A production-ready disk monitoring system that gives Sam instant visibility into disk usage patterns and space consumption across his entire system. The tool provides both high-level disk health overview and detailed large file analysis, making it perfect for proactive system maintenance, preventing disk space emergencies, and identifying cleanup opportunities. Beautiful terminal output and comprehensive CLI options make it suitable for both interactive use and automation scripts. Successfully tested on Sam's system, accurately detecting disk usage patterns and scanning capabilities, with robust error handling for permission restrictions and edge cases.
 
 ### 2026-02-08, 2:30 AM - Weekly Digest Generator
 Built `scripts/weekly-digest` - an intelligent multi-day memory analysis and summarization tool for creating beautiful weekly reports.

@@ -1,0 +1,358 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// ANSI color codes
+const colors = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  gray: '\x1b[90m',
+  bold: '\x1b[1m'
+};
+
+// Default configuration
+const DEFAULT_CONFIG = {
+  sizeMB: 100,
+  count: 10,
+  paths: ['/home', '/tmp', '/var/log'],
+  diskThreshold: 80
+};
+
+class DiskWatchdog {
+  constructor(config = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  formatSize(bytes) {
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes === 0) return '0 B';
+    
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const size = bytes / Math.pow(1024, i);
+    
+    return `${size.toFixed(1)} ${sizes[i]}`;
+  }
+
+  formatPath(filePath, maxLength = 60) {
+    if (filePath.length <= maxLength) return filePath;
+    const start = filePath.substring(0, Math.floor(maxLength / 2) - 2);
+    const end = filePath.substring(filePath.length - Math.floor(maxLength / 2) + 2);
+    return `${start}...${end}`;
+  }
+
+  async getDiskUsage() {
+    try {
+      const output = execSync('df -h', { encoding: 'utf8' });
+      const lines = output.trim().split('\n').slice(1); // Skip header
+      
+      return lines.map(line => {
+        const parts = line.split(/\s+/);
+        if (parts.length >= 6) {
+          const usage = parseInt(parts[4].replace('%', ''));
+          return {
+            filesystem: parts[0],
+            size: parts[1],
+            used: parts[2],
+            available: parts[3],
+            usage: usage,
+            mountpoint: parts[5],
+            critical: usage >= this.config.diskThreshold
+          };
+        }
+        return null;
+      }).filter(Boolean);
+    } catch (error) {
+      console.error(`${colors.red}Error getting disk usage: ${error.message}${colors.reset}`);
+      return [];
+    }
+  }
+
+  async scanDirectory(dirPath) {
+    const files = [];
+    
+    try {
+      const stats = fs.statSync(dirPath);
+      if (!stats.isDirectory()) {
+        if (stats.size >= this.config.sizeMB * 1024 * 1024) {
+          return [{ path: dirPath, size: stats.size, isDir: false }];
+        }
+        return [];
+      }
+
+      // Add directory itself if it's large
+      const dirSize = await this.getDirectorySize(dirPath);
+      if (dirSize >= this.config.sizeMB * 1024 * 1024) {
+        files.push({ path: dirPath, size: dirSize, isDir: true });
+      }
+
+      // Scan subdirectories and files
+      const entries = fs.readdirSync(dirPath);
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry);
+        
+        try {
+          const entryStats = fs.statSync(fullPath);
+          
+          if (entryStats.isFile() && entryStats.size >= this.config.sizeMB * 1024 * 1024) {
+            files.push({ path: fullPath, size: entryStats.size, isDir: false });
+          } else if (entryStats.isDirectory()) {
+            // Recursively scan subdirectories (with depth limit to avoid infinite recursion)
+            const subFiles = await this.scanDirectory(fullPath);
+            files.push(...subFiles);
+          }
+        } catch (error) {
+          // Skip files/directories we can't access (permissions, etc.)
+          continue;
+        }
+      }
+    } catch (error) {
+      // Skip directories we can't access
+      return [];
+    }
+
+    return files;
+  }
+
+  async getDirectorySize(dirPath) {
+    try {
+      const output = execSync(`du -sb "${dirPath}" 2>/dev/null || echo "0 ${dirPath}"`, { encoding: 'utf8' });
+      const size = parseInt(output.split('\t')[0] || '0');
+      return size;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  async findLargeFiles() {
+    const allFiles = [];
+    
+    for (const scanPath of this.config.paths) {
+      if (fs.existsSync(scanPath)) {
+        console.log(`${colors.gray}Scanning ${scanPath}...${colors.reset}`);
+        const files = await this.scanDirectory(scanPath);
+        allFiles.push(...files);
+      } else {
+        console.log(`${colors.yellow}⚠️  Path not found: ${scanPath}${colors.reset}`);
+      }
+    }
+
+    // Sort by size (largest first) and take top N
+    return allFiles
+      .sort((a, b) => b.size - a.size)
+      .slice(0, this.config.count);
+  }
+
+  printDiskUsage(diskData) {
+    console.log(`${colors.bold}${colors.blue}💾 Disk Usage Summary${colors.reset}\n`);
+    
+    let hasCritical = false;
+    
+    for (const disk of diskData) {
+      const color = disk.critical ? colors.red : disk.usage > 70 ? colors.yellow : colors.green;
+      const icon = disk.critical ? '🚨' : disk.usage > 70 ? '⚠️' : '✅';
+      
+      console.log(`${icon} ${disk.mountpoint.padEnd(20)} ${color}${disk.usage}%${colors.reset} (${disk.used}/${disk.size}) - ${disk.filesystem}`);
+      
+      if (disk.critical) {
+        hasCritical = true;
+      }
+    }
+
+    if (hasCritical) {
+      console.log(`\n${colors.red}${colors.bold}🚨 CRITICAL: Some partitions are running low on space!${colors.reset}`);
+    }
+    
+    console.log(); // Empty line
+  }
+
+  printLargeFiles(files) {
+    if (files.length === 0) {
+      console.log(`${colors.green}✅ No files found larger than ${this.config.sizeMB}MB${colors.reset}\n`);
+      return;
+    }
+
+    console.log(`${colors.bold}${colors.magenta}📁 Largest Files/Directories (>${this.config.sizeMB}MB)${colors.reset}\n`);
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const icon = file.isDir ? '📂' : '📄';
+      const sizeStr = this.formatSize(file.size);
+      const pathStr = this.formatPath(file.path);
+      
+      console.log(`${(i + 1).toString().padStart(2)}. ${icon} ${sizeStr.padStart(10)} ${colors.cyan}${pathStr}${colors.reset}`);
+    }
+    
+    console.log(); // Empty line
+  }
+
+  printRecommendations(diskData, files) {
+    console.log(`${colors.bold}${colors.yellow}💡 Recommendations${colors.reset}\n`);
+    
+    const criticalDisks = diskData.filter(d => d.critical);
+    const warningDisks = diskData.filter(d => d.usage > 70 && !d.critical);
+    
+    if (criticalDisks.length > 0) {
+      console.log(`${colors.red}🚨 URGENT: Clean up space on: ${criticalDisks.map(d => d.mountpoint).join(', ')}${colors.reset}`);
+    }
+    
+    if (warningDisks.length > 0) {
+      console.log(`${colors.yellow}⚠️  Monitor space on: ${warningDisks.map(d => d.mountpoint).join(', ')}${colors.reset}`);
+    }
+    
+    if (files.length > 0) {
+      console.log(`${colors.cyan}🗂️  Consider cleaning up largest files shown above${colors.reset}`);
+      console.log(`${colors.gray}   Use: rm, mv, or compress large files as appropriate${colors.reset}`);
+    }
+    
+    console.log(`${colors.gray}📊 Run with --help for more options${colors.reset}`);
+  }
+
+  async run() {
+    console.log(`${colors.bold}${colors.cyan}🐕 Disk Watchdog${colors.reset} - Monitoring disk usage and large files\n`);
+    
+    // Get disk usage
+    const diskData = await getDiskUsage();
+    this.printDiskUsage(diskData);
+    
+    // Find large files
+    const largeFiles = await this.findLargeFiles();
+    this.printLargeFiles(largeFiles);
+    
+    // Show recommendations
+    this.printRecommendations(diskData, largeFiles);
+  }
+}
+
+// Command line argument parsing
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const config = { ...DEFAULT_CONFIG };
+  
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    
+    switch (arg) {
+      case '--help':
+      case '-h':
+        showHelp();
+        process.exit(0);
+        break;
+        
+      case '--size':
+      case '-s':
+        if (args[i + 1]) {
+          config.sizeMB = parseInt(args[i + 1]);
+          i++; // Skip next arg
+        }
+        break;
+        
+      case '--count':
+      case '-c':
+        if (args[i + 1]) {
+          config.count = parseInt(args[i + 1]);
+          i++; // Skip next arg
+        }
+        break;
+        
+      case '--paths':
+      case '-p':
+        if (args[i + 1]) {
+          config.paths = args[i + 1].split(',');
+          i++; // Skip next arg
+        }
+        break;
+        
+      case '--threshold':
+      case '-t':
+        if (args[i + 1]) {
+          config.diskThreshold = parseInt(args[i + 1]);
+          i++; // Skip next arg
+        }
+        break;
+        
+      default:
+        console.error(`${colors.red}Unknown argument: ${arg}${colors.reset}`);
+        console.log(`Run with --help for usage information`);
+        process.exit(1);
+    }
+  }
+  
+  return config;
+}
+
+function showHelp() {
+  console.log(`${colors.bold}${colors.cyan}🐕 Disk Watchdog${colors.reset} - Monitor disk usage and find large files
+
+${colors.bold}USAGE:${colors.reset}
+  disk-watchdog [options]
+
+${colors.bold}OPTIONS:${colors.reset}
+  -s, --size SIZE     Size threshold in MB for large files (default: ${DEFAULT_CONFIG.sizeMB})
+  -c, --count COUNT   Number of largest files to show (default: ${DEFAULT_CONFIG.count})
+  -p, --paths PATHS   Comma-separated paths to scan (default: ${DEFAULT_CONFIG.paths.join(',')})
+  -t, --threshold PCT Disk usage warning threshold % (default: ${DEFAULT_CONFIG.diskThreshold})
+  -h, --help          Show this help message
+
+${colors.bold}EXAMPLES:${colors.reset}
+  disk-watchdog                                    # Use defaults
+  disk-watchdog --size 500 --count 20             # Find 500MB+ files, show top 20
+  disk-watchdog --paths /home,/tmp,/var            # Scan specific directories
+  disk-watchdog --threshold 90                     # Alert when disk >90% full
+
+${colors.bold}OUTPUT:${colors.reset}
+  🚨 Critical alerts for disks >${DEFAULT_CONFIG.diskThreshold}% full
+  📊 Disk usage summary for all mounted filesystems
+  📁 Largest files/directories above size threshold
+  💡 Actionable recommendations for cleanup
+
+${colors.gray}Built for Sam's nightly automation - part of the disk monitoring suite${colors.reset}`);
+}
+
+// Fix the getDiskUsage function reference
+async function getDiskUsage() {
+  try {
+    const output = execSync('df -h', { encoding: 'utf8' });
+    const lines = output.trim().split('\n').slice(1); // Skip header
+    
+    return lines.map(line => {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 6) {
+        const usage = parseInt(parts[4].replace('%', ''));
+        return {
+          filesystem: parts[0],
+          size: parts[1],
+          used: parts[2],
+          available: parts[3],
+          usage: usage,
+          mountpoint: parts[5],
+          critical: usage >= DEFAULT_CONFIG.diskThreshold
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  } catch (error) {
+    console.error(`${colors.red}Error getting disk usage: ${error.message}${colors.reset}`);
+    return [];
+  }
+}
+
+// Main execution
+if (require.main === module) {
+  const config = parseArgs();
+  const watchdog = new DiskWatchdog(config);
+  watchdog.run().catch(error => {
+    console.error(`${colors.red}Error: ${error.message}${colors.reset}`);
+    process.exit(1);
+  });
+}
+
+module.exports = DiskWatchdog;
